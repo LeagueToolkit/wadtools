@@ -10,6 +10,8 @@ use std::{
 use tracing::info;
 use walkdir::WalkDir;
 
+use super::format_chunk_path_hash;
+
 #[derive(Debug, Clone, Default)]
 pub struct WadHashtable {
     is_loaded: bool,
@@ -28,7 +30,7 @@ impl WadHashtable {
         self.items
             .get(&path_hash)
             .map(|x| x.clone())
-            .unwrap_or_else(|| format!("{:x}", path_hash).into())
+            .unwrap_or_else(|| format_chunk_path_hash(path_hash).into())
     }
 
     pub fn add_from_dir(&mut self, dir: impl AsRef<Path>) -> eyre::Result<()> {
@@ -48,7 +50,7 @@ impl WadHashtable {
         Ok(())
     }
 
-    pub fn add_from_file(&mut self, file: &mut File) -> eyre::Result<()> {
+    pub fn add_from_file(&mut self, file: &File) -> eyre::Result<()> {
         let reader = BufReader::new(file);
         let mut lines = reader.lines();
 

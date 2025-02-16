@@ -1,4 +1,5 @@
 #![feature(io_error_more)]
+#![feature(let_chains)]
 
 use std::io::stdout;
 
@@ -10,7 +11,6 @@ mod league_file;
 mod utils;
 
 use commands::*;
-use tracing_subscriber::fmt::writer::MakeWriterExt;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -21,6 +21,7 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Extract the contents of a wad file
     Extract {
         /// Path to the input wad file
         #[arg(short, long)]
@@ -33,6 +34,28 @@ pub enum Commands {
         /// Path to the hashtable file
         #[arg(short, long)]
         hashtable: Option<String>,
+    },
+    /// Compare two wad files
+    ///
+    /// This command compares two wad files and prints the differences between them.
+    /// Using the reference wad file, it will print the differences between the target wad file.
+    ///
+    Diff {
+        /// Path to the reference wad file
+        #[arg(short, long)]
+        reference: String,
+
+        /// Path to the target wad file
+        #[arg(short, long)]
+        target: String,
+
+        /// Path to the hashtable file
+        #[arg(short, long)]
+        hashtable_path: Option<String>,
+
+        /// Output the diffs to a .csv file
+        #[arg(short, long, help = "The path to the output .csv file")]
+        output: Option<String>,
     },
 }
 
@@ -50,6 +73,17 @@ fn main() -> eyre::Result<()> {
             input,
             output,
             hashtable,
+        }),
+        Commands::Diff {
+            reference,
+            target,
+            hashtable_path,
+            output,
+        } => diff(DiffArgs {
+            reference,
+            target,
+            hashtable_path,
+            output,
         }),
     }
 }
