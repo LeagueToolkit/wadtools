@@ -92,6 +92,15 @@ fn initialize_tracing() -> eyre::Result<()> {
     let subscriber = tracing_subscriber::fmt::Subscriber::builder()
         .with_max_level(Level::INFO)
         .with_writer(stdout)
+        .event_format(
+            tracing_subscriber::fmt::format()
+                .with_ansi(true)
+                .with_level(true)
+                .with_source_location(false)
+                .with_line_number(false)
+                .with_target(false)
+                .with_timer(tracing_subscriber::fmt::time::time()),
+        )
         .finish();
 
     tracing::subscriber::set_global_default(subscriber)?;

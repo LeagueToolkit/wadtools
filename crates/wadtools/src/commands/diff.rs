@@ -159,7 +159,9 @@ fn write_diffs_to_csv(
         .open(output_path)?;
 
     let mut writer = csv::Writer::from_writer(file);
-    let records = create_csv_records(diffs, hashtable);
+    let mut records = create_csv_records(diffs, hashtable);
+
+    records.sort_by(|a, b| a.path.cmp(&b.path));
 
     for record in records.iter() {
         writer.serialize(record)?;
