@@ -16,7 +16,7 @@ Tooling for interacting with `.wad` files. This command-line utility provides a 
 
 ### From Releases
 
-Download the latest release for your platform from the [Releases page](https://github.com/Crauzer/wadtools/releases).
+Download the latest release for your platform from the [Releases page](https://github.com/LeagueToolkit/wadtools/releases).
 
 Available binaries:
 - Windows (x64): `wadtools-windows-amd64.exe`
