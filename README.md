@@ -4,7 +4,7 @@
 [![Release](https://github.com/LeagueToolkit/wadtools/actions/workflows/release.yml/badge.svg)](https://github.com/LeagueToolkit/wadtools/actions/workflows/release.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](https://opensource.org/licenses/GPL-3.0)
 
-Tooling for interacting with `.wad` files. This command-line utility provides a set of tools for working with WAD (Wwise Audio Database) files, commonly used in games.
+Tooling for interacting with `.wad` files. This command-line utility provides a set of tools for working with `.wad` archive files found in League of Legends.
 
 ## Features
 
