@@ -1,4 +1,5 @@
 #![feature(io_error_more)]
+#![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(let_chains)]
 
 use std::io::stdout;
@@ -22,19 +23,7 @@ struct Args {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Extract the contents of a wad file
-    Extract {
-        /// Path to the input wad file
-        #[arg(short, long)]
-        input: String,
-
-        /// Path to the output directory
-        #[arg(short, long)]
-        output: String,
-
-        /// Path to the hashtable file
-        #[arg(short, long)]
-        hashtable: Option<String>,
-    },
+    Extract(ExtractArgs),
     /// Compare two wad files
     ///
     /// This command compares two wad files and prints the differences between them.
@@ -65,15 +54,7 @@ fn main() -> eyre::Result<()> {
     let args = Args::parse();
 
     match args.command {
-        Commands::Extract {
-            input,
-            output,
-            hashtable,
-        } => extract(ExtractArgs {
-            input,
-            output,
-            hashtable,
-        }),
+        Commands::Extract(args) => extract(args),
         Commands::Diff {
             reference,
             target,

@@ -16,14 +16,20 @@ use std::{
 pub struct Extractor<'chunks> {
     decoder: &'chunks mut WadDecoder<'chunks, &'chunks File>,
     hashtable: &'chunks WadHashtable,
+    filter: Option<regex::Regex>,
 }
 
 impl<'chunks> Extractor<'chunks> {
     pub fn new(
         decoder: &'chunks mut WadDecoder<'chunks, &'chunks File>,
         hashtable: &'chunks WadHashtable,
+        filter: impl Into<Option<regex::Regex>>,
     ) -> Self {
-        Self { decoder, hashtable }
+        Self {
+            decoder,
+            hashtable,
+            filter: filter.into(),
+        }
     }
 
     pub fn extract_chunks(
@@ -32,7 +38,18 @@ impl<'chunks> Extractor<'chunks> {
         extract_directory: impl AsRef<Path>,
     ) -> eyre::Result<()> {
         tracing::info!("preparing extraction directories");
-        prepare_extraction_directories_absolute(chunks.iter(), self.hashtable, &extract_directory)?;
+        let chunks = chunks.iter().filter(|c| {
+            let Some(filter) = self.filter.as_ref() else {
+                return true;
+            };
+            let chunk_path = self.hashtable.resolve_path(c.1.path_hash());
+            filter.is_match(&chunk_path)
+        });
+        prepare_extraction_directories_absolute(
+            chunks.clone(),
+            self.hashtable,
+            &extract_directory,
+        )?;
 
         tracing::info!("extracting chunks");
         extract_wad_chunks(
@@ -109,19 +126,22 @@ fn create_extraction_directories(
 
 pub fn extract_wad_chunks<TSource: Read + Seek>(
     decoder: &mut WadDecoder<TSource>,
-    chunks: &HashMap<u64, WadChunk>,
+    chunks: impl IntoIterator<Item = (&u64, &WadChunk)>,
     wad_hashtable: &WadHashtable,
     extract_directory: PathBuf,
     report_progress: impl Fn(f64, Option<&str>) -> eyre::Result<()>,
 ) -> eyre::Result<()> {
     tracing::info!("extracting chunks");
 
+    let chunks = chunks.into_iter();
+    let len = chunks.size_hint().1.unwrap_or(chunks.size_hint().0) as f64;
     let mut i = 0;
     for (_, chunk) in chunks {
         let chunk_path = wad_hashtable.resolve_path(chunk.path_hash());
+
         let chunk_path = Path::new(chunk_path.as_ref());
 
-        report_progress(i as f64 / chunks.len() as f64, chunk_path.to_str())?;
+        report_progress(i as f64 / len, chunk_path.to_str())?;
 
         extract_wad_chunk_absolute(decoder, &chunk, &chunk_path, &extract_directory)?;
 
