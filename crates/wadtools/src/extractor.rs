@@ -36,7 +36,7 @@ impl<'chunks> Extractor<'chunks> {
         &mut self,
         chunks: &HashMap<u64, WadChunk>,
         extract_directory: impl AsRef<Path>,
-    ) -> eyre::Result<()> {
+    ) -> eyre::Result<usize> {
         tracing::info!("preparing extraction directories");
         let chunks = chunks.iter().filter(|c| {
             let Some(filter) = self.filter.as_ref() else {
@@ -52,7 +52,7 @@ impl<'chunks> Extractor<'chunks> {
         )?;
 
         tracing::info!("extracting chunks");
-        extract_wad_chunks(
+        let count = extract_wad_chunks(
             self.decoder,
             chunks,
             self.hashtable,
@@ -60,7 +60,7 @@ impl<'chunks> Extractor<'chunks> {
             |_, _| Ok(()),
         )?;
 
-        Ok(())
+        Ok(count)
     }
 }
 
@@ -130,7 +130,7 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
     wad_hashtable: &WadHashtable,
     extract_directory: PathBuf,
     report_progress: impl Fn(f64, Option<&str>) -> eyre::Result<()>,
-) -> eyre::Result<()> {
+) -> eyre::Result<usize> {
     tracing::info!("extracting chunks");
 
     let chunks = chunks.into_iter();
@@ -148,7 +148,7 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
         i = i + 1;
     }
 
-    Ok(())
+    Ok(i)
 }
 
 pub fn extract_wad_chunks_relative<TSource: Read + Seek>(

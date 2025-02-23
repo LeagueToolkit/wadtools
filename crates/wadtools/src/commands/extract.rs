@@ -34,9 +34,9 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
     let filter = args.filter.map_or(Ok(None), |v| Regex::new(&v).map(Some))?;
 
     let mut extractor = Extractor::new(&mut decoder, &hashtable, filter);
-    extractor.extract_chunks(&chunks, &args.output)?;
+    let count = extractor.extract_chunks(&chunks, &args.output)?;
 
-    tracing::info!("extracted {} chunks :)", chunks.len());
+    tracing::info!("extracted {count} chunks :)");
 
     Ok(())
 }
