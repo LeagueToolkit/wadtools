@@ -24,6 +24,8 @@ struct Args {
 pub enum Commands {
     /// Extract the contents of a wad file
     Extract(ExtractArgs),
+    /// Convert file(s) to a desired format
+    Convert(ConvertArgs),
     /// Compare two wad files
     ///
     /// This command compares two wad files and prints the differences between them.
@@ -55,6 +57,7 @@ fn main() -> eyre::Result<()> {
 
     match args.command {
         Commands::Extract(args) => extract(args),
+        Commands::Convert(args) => convert(args),
         Commands::Diff {
             reference,
             target,
