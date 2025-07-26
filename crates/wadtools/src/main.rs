@@ -1,6 +1,3 @@
-#![feature(io_error_more)]
-#![feature(let_chains)]
-
 use std::io::stdout;
 
 use clap::{Parser, Subcommand};

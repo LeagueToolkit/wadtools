@@ -111,13 +111,13 @@ where
         }
 
         // If the chunk is present in the target wad, we need to compare the two chunks
-        if let Some(target_chunk) = target_chunk
-            && target_chunk.checksum != reference_chunk.checksum
-        {
-            diffs.push(ChunkDiff::Modified {
-                old: *reference_chunk,
-                new: *target_chunk,
-            });
+        if let Some(target_chunk) = target_chunk {
+            if target_chunk.checksum != reference_chunk.checksum {
+                diffs.push(ChunkDiff::Modified {
+                    old: *reference_chunk,
+                    new: *target_chunk,
+                });
+            }
         }
     }
 
