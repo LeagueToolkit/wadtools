@@ -2,12 +2,13 @@ use std::fs::File;
 
 use league_toolkit::core::wad::Wad;
 
-use crate::{extractor::Extractor, utils::WadHashtable};
+use crate::{extractor::Extractor, league_file::LeagueFileKind, utils::WadHashtable};
 
 pub struct ExtractArgs {
     pub input: String,
     pub output: String,
     pub hashtable: Option<String>,
+    pub filter_type: Option<Vec<LeagueFileKind>>,
 }
 
 pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
@@ -23,7 +24,8 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
     }
 
     let mut extractor = Extractor::new(&mut decoder, &hashtable);
-    extractor.extract_chunks(&chunks, &args.output)?;
+    let filter_type = args.filter_type.as_ref().map(|x| x.as_slice());
+    extractor.extract_chunks(&chunks, &args.output, filter_type)?;
 
     tracing::info!("extracted {} chunks :)", chunks.len());
 
