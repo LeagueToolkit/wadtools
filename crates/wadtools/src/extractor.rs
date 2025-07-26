@@ -1,6 +1,6 @@
 use crate::{
     league_file::{get_extension_from_league_file_kind, identify_league_file, LeagueFileKind},
-    utils::WadHashtable,
+    utils::{is_chunk_path, WadHashtable},
 };
 use color_eyre::eyre::{self, Ok};
 use eyre::Context;
@@ -215,7 +215,7 @@ pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
 
 fn resolve_final_chunk_path(chunk_path: impl AsRef<Path>, chunk_data: &Box<[u8]>) -> PathBuf {
     let mut chunk_path = chunk_path.as_ref().to_path_buf();
-    if chunk_path.extension().is_none() {
+    if chunk_path.extension().is_none() && is_chunk_path(&chunk_path) {
         // check for known extensions
         match identify_league_file(&chunk_data) {
             LeagueFileKind::Unknown => {
@@ -249,7 +249,7 @@ fn write_long_filename_chunk(
     extract_directory: impl AsRef<Path>,
     chunk_data: &Box<[u8]>,
 ) -> eyre::Result<()> {
-    let hashed_path = format!(".{:x}", chunk.path_hash());
+    let hashed_path = format!("{:016x}", chunk.path_hash());
     tracing::warn!(
         "invalid chunk filename, writing as hashed path (chunk_path: {}, hashed_path: {})",
         chunk_path.as_ref().display(),
@@ -267,7 +267,7 @@ fn write_long_filename_chunk(
             fs::write(
                 &extract_directory
                     .as_ref()
-                    .join(format!("{:x}", chunk.path_hash()))
+                    .join(format!("{:016x}", chunk.path_hash()))
                     .with_extension(extension),
                 &chunk_data,
             )?;
