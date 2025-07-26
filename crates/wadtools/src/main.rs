@@ -1,6 +1,3 @@
-#![feature(io_error_more)]
-#![feature(let_chains)]
-
 use std::io::stdout;
 
 use clap::{Parser, Subcommand};
@@ -11,6 +8,8 @@ mod league_file;
 mod utils;
 
 use commands::*;
+
+use crate::league_file::LeagueFileKind;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -32,8 +31,11 @@ pub enum Commands {
         output: String,
 
         /// Path to the hashtable file
-        #[arg(short, long)]
+        #[arg(long)]
         hashtable: Option<String>,
+
+        #[arg(long, value_name = "FILTER_MAGIC", help = "Filter files by magic (e.g., 'png', 'bin').", value_parser = parse_filter_type)]
+        filter_type: Option<Vec<LeagueFileKind>>,
     },
     /// Compare two wad files
     ///
@@ -50,8 +52,8 @@ pub enum Commands {
         target: String,
 
         /// Path to the hashtable file
-        #[arg(short, long)]
-        hashtable_path: Option<String>,
+        #[arg(long)]
+        hashtable: Option<String>,
 
         /// Output the diffs to a .csv file
         #[arg(short, long, help = "The path to the output .csv file")]
@@ -69,20 +71,22 @@ fn main() -> eyre::Result<()> {
             input,
             output,
             hashtable,
+            filter_type,
         } => extract(ExtractArgs {
             input,
             output,
             hashtable,
+            filter_type,
         }),
         Commands::Diff {
             reference,
             target,
-            hashtable_path,
+            hashtable,
             output,
         } => diff(DiffArgs {
             reference,
             target,
-            hashtable_path,
+            hashtable_path: hashtable,
             output,
         }),
     }
@@ -105,4 +109,12 @@ fn initialize_tracing() -> eyre::Result<()> {
 
     tracing::subscriber::set_global_default(subscriber)?;
     Ok(())
+}
+
+// parses filter type for clap arguments
+fn parse_filter_type(s: &str) -> Result<LeagueFileKind, String> {
+    match league_file::get_league_file_kind_from_extension(s) {
+        LeagueFileKind::Unknown => Err(format!("Unknown file kind: {}", s)),
+        other => Ok(other),
+    }
 }

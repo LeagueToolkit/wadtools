@@ -1,6 +1,6 @@
 use crate::{
     league_file::{get_extension_from_league_file_kind, identify_league_file, LeagueFileKind},
-    utils::WadHashtable,
+    utils::{is_chunk_path, WadHashtable},
 };
 use color_eyre::eyre::{self, Ok};
 use eyre::Context;
@@ -30,6 +30,7 @@ impl<'chunks> Extractor<'chunks> {
         &mut self,
         chunks: &HashMap<u64, WadChunk>,
         extract_directory: impl AsRef<Path>,
+        filter_type: Option<&[LeagueFileKind]>,
     ) -> eyre::Result<()> {
         tracing::info!("preparing extraction directories");
         prepare_extraction_directories_absolute(chunks.iter(), self.hashtable, &extract_directory)?;
@@ -41,6 +42,7 @@ impl<'chunks> Extractor<'chunks> {
             self.hashtable,
             extract_directory.as_ref().to_path_buf(),
             |_, _| Ok(()),
+            filter_type,
         )?;
 
         Ok(())
@@ -113,6 +115,7 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
     wad_hashtable: &WadHashtable,
     extract_directory: PathBuf,
     report_progress: impl Fn(f64, Option<&str>) -> eyre::Result<()>,
+    filter_type: Option<&[LeagueFileKind]>,
 ) -> eyre::Result<()> {
     tracing::info!("extracting chunks");
 
@@ -123,7 +126,13 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
 
         report_progress(i as f64 / chunks.len() as f64, chunk_path.to_str())?;
 
-        extract_wad_chunk_absolute(decoder, &chunk, &chunk_path, &extract_directory)?;
+        extract_wad_chunk_absolute(
+            decoder,
+            &chunk,
+            &chunk_path,
+            &extract_directory,
+            filter_type,
+        )?;
 
         i = i + 1;
     }
@@ -138,6 +147,7 @@ pub fn extract_wad_chunks_relative<TSource: Read + Seek>(
     wad_hashtable: &WadHashtable,
     extract_directory: PathBuf,
     report_progress: impl Fn(f64, Option<&str>) -> eyre::Result<()>,
+    filter_type: Option<&[LeagueFileKind]>,
 ) -> eyre::Result<()> {
     tracing::info!("extracting chunks");
 
@@ -156,6 +166,7 @@ pub fn extract_wad_chunks_relative<TSource: Read + Seek>(
                 None => chunk_path,
             },
             &extract_directory,
+            filter_type,
         )?;
 
         i = i + 1;
@@ -169,11 +180,22 @@ pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
     chunk: &WadChunk,
     chunk_path: impl AsRef<Path>,
     extract_directory: impl AsRef<Path>,
+    filter_type: Option<&[LeagueFileKind]>,
 ) -> eyre::Result<()> {
     let chunk_data = decoder.load_chunk_decompressed(chunk).wrap_err(format!(
         "failed to decompress chunk (chunk_path: {})",
         chunk_path.as_ref().display()
     ))?;
+
+    let chunk_kind = identify_league_file(&chunk_data);
+    if filter_type.is_some_and(|filter| !filter.contains(&chunk_kind)) {
+        tracing::debug!(
+            "skipping chunk (chunk_path: {}, chunk_kind: {:?})",
+            chunk_path.as_ref().display(),
+            chunk_kind
+        );
+        return Ok(());
+    }
 
     let chunk_path = resolve_final_chunk_path(chunk_path, &chunk_data);
     let Err(error) = fs::write(&extract_directory.as_ref().join(&chunk_path), &chunk_data) else {
@@ -193,7 +215,7 @@ pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
 
 fn resolve_final_chunk_path(chunk_path: impl AsRef<Path>, chunk_data: &Box<[u8]>) -> PathBuf {
     let mut chunk_path = chunk_path.as_ref().to_path_buf();
-    if chunk_path.extension().is_none() {
+    if chunk_path.extension().is_none() && is_chunk_path(&chunk_path) {
         // check for known extensions
         match identify_league_file(&chunk_data) {
             LeagueFileKind::Unknown => {
@@ -227,7 +249,7 @@ fn write_long_filename_chunk(
     extract_directory: impl AsRef<Path>,
     chunk_data: &Box<[u8]>,
 ) -> eyre::Result<()> {
-    let hashed_path = format!(".{:x}", chunk.path_hash());
+    let hashed_path = format!("{:016x}", chunk.path_hash());
     tracing::warn!(
         "invalid chunk filename, writing as hashed path (chunk_path: {}, hashed_path: {})",
         chunk_path.as_ref().display(),
@@ -245,7 +267,7 @@ fn write_long_filename_chunk(
             fs::write(
                 &extract_directory
                     .as_ref()
-                    .join(format!("{:x}", chunk.path_hash()))
+                    .join(format!("{:016x}", chunk.path_hash()))
                     .with_extension(extension),
                 &chunk_data,
             )?;
