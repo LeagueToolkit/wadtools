@@ -166,7 +166,7 @@ pub fn extract_wad_chunks_relative<TSource: Read + Seek>(
                 None => chunk_path,
             },
             &extract_directory,
-            filter_type
+            filter_type,
         )?;
 
         i = i + 1;
