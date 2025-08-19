@@ -5,6 +5,7 @@ use crate::{
 use color_eyre::eyre::{self, Ok};
 use eyre::Context;
 use league_toolkit::core::wad::{WadChunk, WadDecoder};
+use regex::Regex;
 use std::{
     collections::HashMap,
     ffi::OsStr,
@@ -16,6 +17,7 @@ use std::{
 pub struct Extractor<'chunks> {
     decoder: &'chunks mut WadDecoder<'chunks, &'chunks File>,
     hashtable: &'chunks WadHashtable,
+    filter_pattern: Option<Regex>,
 }
 
 impl<'chunks> Extractor<'chunks> {
@@ -23,7 +25,15 @@ impl<'chunks> Extractor<'chunks> {
         decoder: &'chunks mut WadDecoder<'chunks, &'chunks File>,
         hashtable: &'chunks WadHashtable,
     ) -> Self {
-        Self { decoder, hashtable }
+        Self {
+            decoder,
+            hashtable,
+            filter_pattern: None,
+        }
+    }
+
+    pub fn set_filter_pattern(&mut self, filter_pattern: Option<Regex>) {
+        self.filter_pattern = filter_pattern;
     }
 
     pub fn extract_chunks(
@@ -32,10 +42,13 @@ impl<'chunks> Extractor<'chunks> {
         extract_directory: impl AsRef<Path>,
         filter_type: Option<&[LeagueFileKind]>,
     ) -> eyre::Result<()> {
-        tracing::info!("preparing extraction directories");
-        prepare_extraction_directories_absolute(chunks.iter(), self.hashtable, &extract_directory)?;
+        prepare_extraction_directories_absolute(
+            chunks.iter(),
+            self.hashtable,
+            &extract_directory,
+            self.filter_pattern.as_ref(),
+        )?;
 
-        tracing::info!("extracting chunks");
         extract_wad_chunks(
             self.decoder,
             chunks,
@@ -43,6 +56,7 @@ impl<'chunks> Extractor<'chunks> {
             extract_directory.as_ref().to_path_buf(),
             |_, _| Ok(()),
             filter_type,
+            self.filter_pattern.as_ref(),
         )?;
 
         Ok(())
@@ -53,41 +67,21 @@ pub fn prepare_extraction_directories_absolute<'chunks>(
     chunks: impl Iterator<Item = (&'chunks u64, &'chunks WadChunk)>,
     wad_hashtable: &WadHashtable,
     extraction_directory: impl AsRef<Path>,
+    filter_pattern: Option<&Regex>,
 ) -> eyre::Result<()> {
     tracing::info!("preparing absolute extraction directories");
 
     // collect all chunk directories
     let chunk_directories = chunks.filter_map(|(_, chunk)| {
-        Path::new(wad_hashtable.resolve_path(chunk.path_hash()).as_ref())
+        let chunk_path_str = wad_hashtable.resolve_path(chunk.path_hash());
+        if let Some(regex) = filter_pattern {
+            if !regex.is_match(chunk_path_str.as_ref()) {
+                return None;
+            }
+        }
+        Path::new(chunk_path_str.as_ref())
             .parent()
             .map(|path| path.to_path_buf())
-    });
-
-    create_extraction_directories(chunk_directories, extraction_directory)?;
-
-    Ok(())
-}
-
-pub fn prepare_extraction_directories_relative<'chunks>(
-    chunks: impl Iterator<Item = &'chunks WadChunk>,
-    parent_path: Option<impl AsRef<Path>>,
-    wad_hashtable: &WadHashtable,
-    extraction_directory: impl AsRef<Path>,
-) -> eyre::Result<()> {
-    tracing::info!("preparing relative extraction directories");
-
-    // collect all chunk directories
-    let chunk_directories = chunks.filter_map(|chunk| {
-        let chunk_directory = wad_hashtable.resolve_path(chunk.path_hash());
-        let chunk_directory = Path::new(chunk_directory.as_ref()).parent().unwrap();
-
-        match &parent_path {
-            Some(parent_path) => chunk_directory
-                .strip_prefix(parent_path.as_ref())
-                .ok()
-                .map(|path| path.to_path_buf()),
-            None => Some(chunk_directory.to_path_buf()),
-        }
     });
 
     create_extraction_directories(chunk_directories, extraction_directory)?;
@@ -116,60 +110,26 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
     extract_directory: PathBuf,
     report_progress: impl Fn(f64, Option<&str>) -> eyre::Result<()>,
     filter_type: Option<&[LeagueFileKind]>,
+    filter_pattern: Option<&Regex>,
 ) -> eyre::Result<()> {
     tracing::info!("extracting chunks");
 
     let mut i = 0;
-    for (_, chunk) in chunks {
-        let chunk_path = wad_hashtable.resolve_path(chunk.path_hash());
-        let chunk_path = Path::new(chunk_path.as_ref());
+    for chunk in chunks.values() {
+        let chunk_path_str = wad_hashtable.resolve_path(chunk.path_hash());
+        if let Some(regex) = filter_pattern {
+            if !regex.is_match(chunk_path_str.as_ref()) {
+                i += 1;
+                continue;
+            }
+        }
+        let chunk_path = Path::new(chunk_path_str.as_ref());
 
         report_progress(i as f64 / chunks.len() as f64, chunk_path.to_str())?;
 
-        extract_wad_chunk_absolute(
-            decoder,
-            &chunk,
-            &chunk_path,
-            &extract_directory,
-            filter_type,
-        )?;
+        extract_wad_chunk_absolute(decoder, chunk, chunk_path, &extract_directory, filter_type)?;
 
-        i = i + 1;
-    }
-
-    Ok(())
-}
-
-pub fn extract_wad_chunks_relative<TSource: Read + Seek>(
-    decoder: &mut WadDecoder<TSource>,
-    chunks: &Vec<WadChunk>,
-    base_directory: Option<impl AsRef<Path>>,
-    wad_hashtable: &WadHashtable,
-    extract_directory: PathBuf,
-    report_progress: impl Fn(f64, Option<&str>) -> eyre::Result<()>,
-    filter_type: Option<&[LeagueFileKind]>,
-) -> eyre::Result<()> {
-    tracing::info!("extracting chunks");
-
-    let mut i = 0;
-    for chunk in chunks {
-        let chunk_path = wad_hashtable.resolve_path(chunk.path_hash());
-        let chunk_path = Path::new(chunk_path.as_ref());
-
-        report_progress(i as f64 / chunks.len() as f64, chunk_path.to_str())?;
-
-        extract_wad_chunk_absolute(
-            decoder,
-            &chunk,
-            match base_directory {
-                Some(ref base_directory) => &chunk_path.strip_prefix(base_directory.as_ref())?,
-                None => chunk_path,
-            },
-            &extract_directory,
-            filter_type,
-        )?;
-
-        i = i + 1;
+        i += 1;
     }
 
     Ok(())
@@ -198,7 +158,7 @@ pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
     }
 
     let chunk_path = resolve_final_chunk_path(chunk_path, &chunk_data);
-    let Err(error) = fs::write(&extract_directory.as_ref().join(&chunk_path), &chunk_data) else {
+    let Err(error) = fs::write(extract_directory.as_ref().join(&chunk_path), &chunk_data) else {
         return Ok(());
     };
 
@@ -206,18 +166,18 @@ pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
     if error.kind() == io::ErrorKind::InvalidFilename {
         write_long_filename_chunk(chunk, chunk_path, extract_directory, &chunk_data)
     } else {
-        return Err(error).wrap_err(format!(
+        Err(error).wrap_err(format!(
             "failed to write chunk (chunk_path: {})",
             chunk_path.display()
-        ));
+        ))
     }
 }
 
-fn resolve_final_chunk_path(chunk_path: impl AsRef<Path>, chunk_data: &Box<[u8]>) -> PathBuf {
+fn resolve_final_chunk_path(chunk_path: impl AsRef<Path>, chunk_data: &[u8]) -> PathBuf {
     let mut chunk_path = chunk_path.as_ref().to_path_buf();
     if chunk_path.extension().is_none() && is_chunk_path(&chunk_path) {
         // check for known extensions
-        match identify_league_file(&chunk_data) {
+        match identify_league_file(chunk_data) {
             LeagueFileKind::Unknown => {
                 tracing::warn!(
                     "chunk has no known extension, prepending '.' (chunk_path: {})",
@@ -225,12 +185,7 @@ fn resolve_final_chunk_path(chunk_path: impl AsRef<Path>, chunk_data: &Box<[u8]>
                 );
 
                 chunk_path = chunk_path.with_file_name(OsStr::new(
-                    &(".".to_string()
-                        + &chunk_path
-                            .file_name()
-                            .unwrap()
-                            .to_string_lossy()
-                            .to_string()),
+                    &(".".to_string() + chunk_path.file_name().unwrap().to_string_lossy().as_ref()),
                 ));
             }
             file_kind => {
@@ -247,7 +202,7 @@ fn write_long_filename_chunk(
     chunk: &WadChunk,
     chunk_path: impl AsRef<Path>,
     extract_directory: impl AsRef<Path>,
-    chunk_data: &Box<[u8]>,
+    chunk_data: &[u8],
 ) -> eyre::Result<()> {
     let hashed_path = format!("{:016x}", chunk.path_hash());
     tracing::warn!(
@@ -256,20 +211,20 @@ fn write_long_filename_chunk(
         &hashed_path
     );
 
-    let file_kind = identify_league_file(&chunk_data);
+    let file_kind = identify_league_file(chunk_data);
     let extension = get_extension_from_league_file_kind(file_kind);
 
     match file_kind {
         LeagueFileKind::Unknown => {
-            fs::write(&extract_directory.as_ref().join(hashed_path), &chunk_data)?;
+            fs::write(extract_directory.as_ref().join(hashed_path), chunk_data)?;
         }
         _ => {
             fs::write(
-                &extract_directory
+                extract_directory
                     .as_ref()
                     .join(format!("{:016x}", chunk.path_hash()))
                     .with_extension(extension),
-                &chunk_data,
+                chunk_data,
             )?;
         }
     }

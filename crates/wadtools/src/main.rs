@@ -36,6 +36,14 @@ pub enum Commands {
 
         #[arg(long, value_name = "FILTER_MAGIC", help = "Filter files by magic (e.g., 'png', 'bin').", value_parser = parse_filter_type)]
         filter_type: Option<Vec<LeagueFileKind>>,
+
+        /// Only extract chunks whose resolved path matches this regex
+        #[arg(
+            long,
+            value_name = "REGEX",
+            help = "Only extract chunks whose resolved path matches this regex"
+        )]
+        pattern: Option<String>,
     },
     /// Compare two wad files
     ///
@@ -72,11 +80,13 @@ fn main() -> eyre::Result<()> {
             output,
             hashtable,
             filter_type,
+            pattern,
         } => extract(ExtractArgs {
             input,
             output,
             hashtable,
             filter_type,
+            pattern,
         }),
         Commands::Diff {
             reference,
