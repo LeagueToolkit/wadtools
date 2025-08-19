@@ -1,7 +1,8 @@
-use std::io::stdout;
-
 use clap::{Parser, Subcommand};
-use tracing::Level;
+use tracing_indicatif::IndicatifLayer;
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 mod commands;
 mod extractor;
 mod league_file;
@@ -103,21 +104,25 @@ fn main() -> eyre::Result<()> {
 }
 
 fn initialize_tracing() -> eyre::Result<()> {
-    let subscriber = tracing_subscriber::fmt::Subscriber::builder()
-        .with_max_level(Level::INFO)
-        .with_writer(stdout)
-        .event_format(
-            tracing_subscriber::fmt::format()
-                .with_ansi(true)
-                .with_level(true)
-                .with_source_location(false)
-                .with_line_number(false)
-                .with_target(false)
-                .with_timer(tracing_subscriber::fmt::time::time()),
-        )
-        .finish();
+    let indicatif_layer = IndicatifLayer::new();
 
-    tracing::subscriber::set_global_default(subscriber)?;
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(indicatif_layer.get_stderr_writer())
+                .event_format(
+                    tracing_subscriber::fmt::format()
+                        .with_ansi(true)
+                        .with_level(true)
+                        .with_source_location(false)
+                        .with_line_number(false)
+                        .with_target(false)
+                        .with_timer(tracing_subscriber::fmt::time::time()),
+                ),
+        )
+        .with(indicatif_layer)
+        .with(LevelFilter::INFO)
+        .init();
     Ok(())
 }
 
