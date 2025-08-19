@@ -13,6 +13,8 @@ use std::{
     io::{self, Read, Seek},
     path::{Path, PathBuf},
 };
+use tracing_indicatif::span_ext::IndicatifSpanExt;
+use tracing_indicatif::style::ProgressStyle;
 
 pub struct Extractor<'chunks> {
     decoder: &'chunks mut WadDecoder<'chunks, &'chunks File>,
@@ -42,6 +44,17 @@ impl<'chunks> Extractor<'chunks> {
         extract_directory: impl AsRef<Path>,
         filter_type: Option<&[LeagueFileKind]>,
     ) -> eyre::Result<()> {
+        let total = chunks.len() as u64;
+        let span = tracing::info_span!("extract", total = total);
+        let _entered = span.enter();
+        span.pb_set_style(
+            &ProgressStyle::with_template("{wide_bar:40.cyan/blue} {pos}/{len} \n {spinner} {msg}")
+                .unwrap(),
+        );
+        span.pb_set_length(total);
+        span.pb_set_message("Extracting chunks");
+        span.pb_set_finish_message("Extraction complete");
+
         prepare_extraction_directories_absolute(
             chunks.iter(),
             self.hashtable,
@@ -54,7 +67,15 @@ impl<'chunks> Extractor<'chunks> {
             chunks,
             self.hashtable,
             extract_directory.as_ref().to_path_buf(),
-            |_, _| Ok(()),
+            |progress, message| {
+                // progress is 0.0..1.0; convert to absolute position
+                let position = (progress * total as f64).round() as u64;
+                span.pb_set_position(position);
+                if let Some(msg) = message {
+                    span.pb_set_message(msg);
+                }
+                Ok(())
+            },
             filter_type,
             self.filter_pattern.as_ref(),
         )?;
@@ -69,8 +90,6 @@ pub fn prepare_extraction_directories_absolute<'chunks>(
     extraction_directory: impl AsRef<Path>,
     filter_pattern: Option<&Regex>,
 ) -> eyre::Result<()> {
-    tracing::info!("preparing absolute extraction directories");
-
     // collect all chunk directories
     let chunk_directories = chunks.filter_map(|(_, chunk)| {
         let chunk_path_str = wad_hashtable.resolve_path(chunk.path_hash());
@@ -112,20 +131,20 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
     filter_type: Option<&[LeagueFileKind]>,
     filter_pattern: Option<&Regex>,
 ) -> eyre::Result<()> {
-    tracing::info!("extracting chunks");
-
     let mut i = 0;
     for chunk in chunks.values() {
         let chunk_path_str = wad_hashtable.resolve_path(chunk.path_hash());
+        let chunk_path = Path::new(chunk_path_str.as_ref());
+
+        // advance progress for every chunk (including ones we skip)
+        report_progress(i as f64 / chunks.len() as f64, chunk_path.to_str())?;
+
         if let Some(regex) = filter_pattern {
             if !regex.is_match(chunk_path_str.as_ref()) {
                 i += 1;
                 continue;
             }
         }
-        let chunk_path = Path::new(chunk_path_str.as_ref());
-
-        report_progress(i as f64 / chunks.len() as f64, chunk_path.to_str())?;
 
         extract_wad_chunk_absolute(decoder, chunk, chunk_path, &extract_directory, filter_type)?;
 
