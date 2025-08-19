@@ -29,7 +29,7 @@ impl WadHashtable {
     pub fn resolve_path(&self, path_hash: u64) -> Arc<str> {
         self.items
             .get(&path_hash)
-            .map(|x| x.clone())
+            .cloned()
             .unwrap_or_else(|| format_chunk_path_hash(path_hash).into())
     }
 
@@ -42,7 +42,7 @@ impl WadHashtable {
             }
 
             info!("loading wad hasthable: {:?}", wad_hashtable_entry.path());
-            self.add_from_file(&mut File::open(wad_hashtable_entry.path())?)?;
+            self.add_from_file(&File::open(wad_hashtable_entry.path())?)?;
         }
         info!("loaded");
         self.is_loaded = true;
