@@ -7,7 +7,7 @@ edition = "2021"
 clap = { version = "4.5.20", features = ["derive"] }
 eyre = "0.6.12"
 toml = "0.8.19"
-regex = "1.11.1"
+fancy-regex = "0.16.2"
 league-toolkit = { git = "https://github.com/LeagueToolkit/league-toolkit", branch = "main", features = [
     "wad",
     "file",

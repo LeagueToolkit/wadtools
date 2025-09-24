@@ -6,7 +6,7 @@ use league_toolkit::{
 };
 
 use crate::{extractor::Extractor, utils::WadHashtable};
-use regex::Regex;
+use fancy_regex::Regex;
 
 pub struct ExtractArgs {
     pub input: String,
@@ -57,7 +57,10 @@ fn get_extracted_count(
     match filter_pattern {
         Some(re) => chunks
             .values()
-            .filter(|chunk| re.is_match(hashtable.resolve_path(chunk.path_hash()).as_ref()))
+            .filter(|chunk| {
+                re.is_match(hashtable.resolve_path(chunk.path_hash()).as_ref())
+                    .unwrap_or(false)
+            })
             .count(),
         None => chunks.len(),
     }
