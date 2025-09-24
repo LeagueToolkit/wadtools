@@ -1,11 +1,11 @@
 use crate::utils::{is_chunk_path, WadHashtable};
 use color_eyre::eyre::{self, Ok};
 use eyre::Context;
+use fancy_regex::Regex;
 use league_toolkit::{
     file::LeagueFileKind,
     wad::{WadChunk, WadDecoder},
 };
-use regex::Regex;
 use std::{
     collections::HashMap,
     ffi::OsStr,
@@ -94,7 +94,7 @@ pub fn prepare_extraction_directories_absolute<'chunks>(
     let chunk_directories = chunks.filter_map(|(_, chunk)| {
         let chunk_path_str = wad_hashtable.resolve_path(chunk.path_hash());
         if let Some(regex) = filter_pattern {
-            if !regex.is_match(chunk_path_str.as_ref()) {
+            if !regex.is_match(chunk_path_str.as_ref()).unwrap_or(false) {
                 return None;
             }
         }
@@ -140,7 +140,7 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
         report_progress(i as f64 / chunks.len() as f64, chunk_path.to_str())?;
 
         if let Some(regex) = filter_pattern {
-            if !regex.is_match(chunk_path_str.as_ref()) {
+            if !regex.is_match(chunk_path_str.as_ref()).unwrap_or(false) {
                 i += 1;
                 continue;
             }
