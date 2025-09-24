@@ -19,9 +19,9 @@ Tooling for interacting with `.wad` files. This command-line utility provides a 
 Download the latest release for your platform from the [Releases page](https://github.com/LeagueToolkit/wadtools/releases).
 
 Available binaries:
-- Windows (x64): `wadtools-windows-amd64.exe`
-- Linux (x64): `wadtools-linux-amd64`
-- macOS (x64): `wadtools-macos-amd64`
+- Windows (x64): `wadtools-windows.exe`
+- Linux (x64): `wadtools-linux`
+- macOS (x64): `wadtools-macos`
 
 ### From Source
 
@@ -31,12 +31,8 @@ To build from source, you'll need:
 
 ```bash
 # Clone the repository
-git clone https://github.com/Crauzer/wadtools.git
+git clone https://github.com/LeagueToolkit/wadtools.git
 cd wadtools
-
-# Install nightly toolchain
-rustup toolchain install nightly
-rustup override set nightly
 
 # Build the project
 cargo build --release
@@ -50,49 +46,91 @@ cargo build --release
 # Basic command structure
 wadtools <COMMAND> [OPTIONS]
 
-# Extract contents from a WAD file
-wadtools extract <WAD_FILE> <OUTPUT_DIR>
-
-# Compare two WAD files
-wadtools diff <WAD_FILE_1> <WAD_FILE_2>
-```
-
-For detailed usage of each command, use the `--help` flag:
-```bash
+# Show command help
 wadtools --help
 wadtools <COMMAND> --help
 ```
 
-### Regex filtering
+### Extract
 
-`extract --pattern/-x` matches paths using `fancy-regex`. Matching is case-insensitive by default. To opt out for a pattern, prefix it with `(?-i)`. Backreferences and lookarounds are supported.
+Extracts files from a WAD archive. Use `-i/--input` for the WAD file, `-o/--output` for the destination directory.
+
+Common flags:
+- `-i, --input <PATH>`: path to the input WAD file
+- `-o, --output <DIR>`: output directory
+- `-H, --hashtable <PATH>` (also `-d`): optional hashtable file to resolve names
+- `-f, --filter-type <TYPE...>`: filter by file type(s) like `png`, `tga`, `bin`
+- `-x, --pattern <REGEX>`: filter by regex on the resolved path (see below)
+
+Basic examples:
+```bash
+# Extract everything (recommended to provide a hashtable)
+wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt
+
+# Extract only textures (DDS or TEX) under assets/
+wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
+  -f dds tex -x "^assets/.*\.(dds|tex)$"
+```
+
+How filtering works:
+- `--pattern/-x` and `--filter-type/-f` are combined with AND semantics.
+  - A chunk must match the regex AND be one of the selected types to be extracted if both flags are provided.
+- Regex is case-insensitive by default.
+  - To opt out, prefix the pattern with `(?-i)`.
+  - Backreferences and lookarounds are supported.
+
+Regex examples:
+```bash
+# Case-insensitive (default)
+wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
+  -x "^assets/.*\.(png|tga)$"
+
+# Backreference example: DATA/Characters/<name>/<name>.bin
+wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
+  -x "(?i)^DATA/Characters/(.*?)/\\1\\.bin$"
+```
+
+Name resolution with hashtable:
+- Without a hashtable, unknown paths are written using their 16-character hex hash (e.g., `2f3c...b9a`).
+- With `-H/--hashtable`, matching hashes are resolved to readable paths before extraction.
+
+When we add the `.ltk` postfix:
+- We append `.ltk` if the original path has no extension or the resolved destination would collide with an existing directory (this happens for a lot of `.bin` files in `UI.wad.client` for example).
+- If we can detect the real type from file contents, we append it after `.ltk`, e.g. `foo.ltk.png`; otherwise just `foo.ltk`.
+
+Handling long filenames:
+- If the platform/filesystem rejects a write due to a long filename, we fall back to the chunk hash as the filename (16 hex chars) in the output directory.
+- A warning is logged including both the readable path (if known) and the hashed path so you can correlate outputs.
+
+File type filtering (`-f/--filter-type`):
+- Uses content detection to identify types like `png`, `tga`, `bin`, etc.
+- You can pass multiple values: `-f png tga`.
+- Remember this ANDs with `--pattern` when both are provided.
+
+Quick diff example:
+```bash
+wadtools diff -r old.wad.client -t new.wad.client -H hashtable.txt \
+  -o diff.csv
+```
 
 ## Development
 
-This project uses Rust's nightly features. To contribute:
-
-1. Ensure you have the nightly toolchain:
-   ```bash
-   rustup toolchain install nightly
-   rustup override set nightly
-   ```
-
-2. Install development tools:
+1. Install development tools:
    ```bash
    rustup component add rustfmt clippy
    ```
 
-3. Run tests:
+2. Run tests:
    ```bash
    cargo test
    ```
 
-4. Check formatting:
+3. Check formatting:
    ```bash
    cargo fmt --all -- --check
    ```
 
-5. Run clippy:
+4. Run clippy:
    ```bash
    cargo clippy -- -D warnings
    ```
