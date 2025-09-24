@@ -1,4 +1,4 @@
-use crate::utils::{is_chunk_path, WadHashtable};
+use crate::utils::{is_hex_chunk_path, WadHashtable};
 use color_eyre::eyre::{self, Ok};
 use eyre::Context;
 use fancy_regex::Regex;
@@ -146,7 +146,7 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
             }
         }
 
-        extract_wad_chunk_absolute(decoder, chunk, chunk_path, &extract_directory, filter_type)?;
+        extract_wad_chunk(decoder, chunk, chunk_path, &extract_directory, filter_type)?;
 
         i += 1;
     }
@@ -154,7 +154,7 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
     Ok(())
 }
 
-pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
+pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
     decoder: &mut WadDecoder<'wad, TSource>,
     chunk: &WadChunk,
     chunk_path: impl AsRef<Path>,
@@ -176,7 +176,7 @@ pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
         return Ok(());
     }
 
-    let chunk_path = resolve_final_chunk_path(chunk_path, &chunk_data);
+    let chunk_path = resolve_final_chunk_path(&extract_directory, chunk_path, &chunk_data);
     let Err(error) = fs::write(extract_directory.as_ref().join(&chunk_path), &chunk_data) else {
         return Ok(());
     };
@@ -192,28 +192,41 @@ pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
     }
 }
 
-fn resolve_final_chunk_path(chunk_path: impl AsRef<Path>, chunk_data: &[u8]) -> PathBuf {
-    let mut chunk_path = chunk_path.as_ref().to_path_buf();
-    if chunk_path.extension().is_none() && is_chunk_path(&chunk_path) {
-        // check for known extensions
-        match LeagueFileKind::identify_from_bytes(chunk_data) {
-            LeagueFileKind::Unknown => {
-                tracing::warn!(
-                    "chunk has no known extension, prepending '.' (chunk_path: {})",
-                    chunk_path.display()
-                );
+fn resolve_final_chunk_path(
+    extract_directory: impl AsRef<Path>,
+    chunk_path: impl AsRef<Path>,
+    chunk_data: &[u8],
+) -> PathBuf {
+    let mut final_path = chunk_path.as_ref().to_path_buf();
 
-                chunk_path = chunk_path.with_file_name(OsStr::new(
-                    &(".".to_string() + chunk_path.file_name().unwrap().to_string_lossy().as_ref()),
-                ));
-            }
-            file_kind => {
-                chunk_path.set_extension(file_kind.extension().unwrap());
-            }
-        }
+    // Hashed paths must remain exactly 16 hex characters with no extension
+    if is_hex_chunk_path(&final_path) {
+        return final_path;
     }
 
-    chunk_path
+    // - If the original path has no extension, affix .ltk (and real extension if known)
+    // - OR if the destination path collides with an existing directory, affix .ltk
+    let has_extension = final_path.extension().is_some();
+    let collides_with_dir = extract_directory.as_ref().join(&final_path).is_dir();
+    if !has_extension || collides_with_dir {
+        let original_stem = chunk_path
+            .as_ref()
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy();
+        let new_name = build_ltk_name(&original_stem, chunk_data);
+        final_path.set_file_name(OsStr::new(&new_name));
+    }
+
+    final_path
+}
+
+fn build_ltk_name(file_stem: &str, chunk_data: &[u8]) -> String {
+    let kind = LeagueFileKind::identify_from_bytes(chunk_data);
+    match kind.extension() {
+        Some(ext) => format!("{}.ltk.{}", file_stem, ext),
+        None => format!("{}.ltk", file_stem),
+    }
 }
 
 fn write_long_filename_chunk(
@@ -229,23 +242,7 @@ fn write_long_filename_chunk(
         &hashed_path
     );
 
-    let file_kind = LeagueFileKind::identify_from_bytes(chunk_data);
-    let extension = file_kind.extension();
-
-    match file_kind {
-        LeagueFileKind::Unknown => {
-            fs::write(extract_directory.as_ref().join(hashed_path), chunk_data)?;
-        }
-        _ => {
-            fs::write(
-                extract_directory
-                    .as_ref()
-                    .join(format!("{:016x}", chunk.path_hash()))
-                    .with_extension(extension.unwrap()),
-                chunk_data,
-            )?;
-        }
-    }
+    fs::write(extract_directory.as_ref().join(hashed_path), chunk_data)?;
 
     Ok(())
 }
