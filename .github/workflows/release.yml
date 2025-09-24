@@ -42,15 +42,15 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: wadtools
-            asset_name: wadtools-linux-amd64
+            asset_name: wadtools-linux
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: wadtools.exe
-            asset_name: wadtools-windows-amd64.exe
+            asset_name: wadtools-windows.exe
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: wadtools
-            asset_name: wadtools-macos-amd64
+            asset_name: wadtools-macos
 
     steps:
       - uses: actions/checkout@v4
