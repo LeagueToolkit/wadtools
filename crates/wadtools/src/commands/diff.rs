@@ -4,7 +4,7 @@ use std::{
 };
 
 use colored::Colorize;
-use league_toolkit::core::wad::{Wad, WadChunk};
+use league_toolkit::wad::{Wad, WadChunk};
 use serde::Serialize;
 
 use crate::utils::{format_chunk_path_hash, WadHashtable};
@@ -76,7 +76,7 @@ fn print_diffs(diffs: &[ChunkDiff], hashtable: &WadHashtable) {
 
                 println!("- {}", path.bright_red());
             }
-            ChunkDiff::Modified { old, new } => {
+            ChunkDiff::Modified { old, new: _ } => {
                 let path = hashtable.resolve_path(old.path_hash);
 
                 // For modified chunks, we print the chunk path in yellow, and somehow also print the new file sizes
@@ -156,6 +156,7 @@ fn write_diffs_to_csv(
     let file = OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(output_path)?;
 
     let mut writer = csv::Writer::from_writer(file);

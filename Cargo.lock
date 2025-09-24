@@ -110,6 +110,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bcdec_rs"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9934c2b68e46448d814db20e34a840ef9b4e7b3b7c8b1da91161481230f6350"
+
+[[package]]
 name = "bitflags"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -122,10 +128,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
 
 [[package]]
+name = "bytemuck"
+version = "1.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3995eaeebcdf32f91f980d360f78732ddc061097ab4e39991ae7a6ace9194677"
+dependencies = [
+ "bytemuck_derive",
+]
+
+[[package]]
+name = "bytemuck_derive"
+version = "1.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f154e572231cb6ba2bd1176980827e3d5dc04cc183a75dea38109fbdd672d29"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.98",
+]
+
+[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
+
+[[package]]
+name = "byteorder-lite"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f1fe948ff07f4bd06c30984e69f5b4899c516a3ef74f34df92a2df2ab535495"
 
 [[package]]
 name = "cc"
@@ -175,7 +207,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.98",
 ]
 
 [[package]]
@@ -250,6 +282,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "crunchy"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
+
+[[package]]
 name = "csv"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -271,6 +309,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ddsfile"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "479dfe1e6737aa9e96c6ac7b69689dc4c32da8383f2c12744739d76afa8b66c4"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "enum-primitive-derive",
+ "num-traits",
+]
+
+[[package]]
 name = "deranged"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -286,10 +336,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 
 [[package]]
+name = "elf_hash"
+version = "0.1.0"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?branch=main#f0117791e8a20ceac82f47b05c39c4027c00b4b6"
+
+[[package]]
 name = "encode_unicode"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
+
+[[package]]
+name = "enum-primitive-derive"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c375b9c5eadb68d0a6efee2999fef292f45854c3444c86f09d8ab086ba942b0e"
+dependencies = [
+ "num-traits",
+ "quote",
+ "syn 1.0.109",
+]
 
 [[package]]
 name = "enum_dispatch"
@@ -300,7 +366,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.98",
 ]
 
 [[package]]
@@ -342,6 +408,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e05e7e6723e3455f4818c7b26e855439f7546cf617ef669d1adedb8669e5cb9"
 
 [[package]]
+name = "half"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "459196ed295495a68f7d7fe1d84f6c4b7ff0e21fe3017b2f283c6fac3ad803c9"
+dependencies = [
+ "bytemuck",
+ "cfg-if",
+ "crunchy",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -352,6 +429,32 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "image"
+version = "0.25.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "529feb3e6769d234375c4cf1ee2ce713682b8e76538cb13f9fc23e1400a591e7"
+dependencies = [
+ "bytemuck",
+ "byteorder-lite",
+ "moxcms",
+ "num-traits",
+]
+
+[[package]]
+name = "image_dds"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84c6d1a2d80bc7dd2928b2a72a46d71bccbb6becf8ce207522b0b92daf0a417f"
+dependencies = [
+ "bcdec_rs",
+ "bytemuck",
+ "ddsfile",
+ "half",
+ "image",
+ "thiserror",
+]
 
 [[package]]
 name = "indenter"
@@ -386,11 +489,11 @@ dependencies = [
 [[package]]
 name = "io-ext"
 version = "0.1.0"
-source = "git+https://github.com/LeagueToolkit/league-toolkit#1096716a78905ad41d64ac9ec4a65c5bce9894d9"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?branch=main#f0117791e8a20ceac82f47b05c39c4027c00b4b6"
 dependencies = [
  "byteorder",
  "glam",
- "league-primitives",
+ "ltk_primitives",
  "thiserror",
 ]
 
@@ -405,6 +508,15 @@ name = "itertools"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
 dependencies = [
  "either",
 ]
@@ -441,35 +553,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
-name = "league-primitives"
-version = "0.1.0"
-source = "git+https://github.com/LeagueToolkit/league-toolkit#1096716a78905ad41d64ac9ec4a65c5bce9894d9"
-dependencies = [
- "byteorder",
- "glam",
- "thiserror",
-]
-
-[[package]]
 name = "league-toolkit"
 version = "0.1.0"
-source = "git+https://github.com/LeagueToolkit/league-toolkit#1096716a78905ad41d64ac9ec4a65c5bce9894d9"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?branch=main#f0117791e8a20ceac82f47b05c39c4027c00b4b6"
 dependencies = [
- "bitflags",
- "byteorder",
- "enum_dispatch",
- "flate2",
- "glam",
- "io-ext",
- "lazy_static",
- "league-primitives",
- "log",
- "memchr",
- "miette",
- "num_enum",
- "paste",
- "thiserror",
- "zstd",
+ "elf_hash",
+ "ltk_anim",
+ "ltk_file",
+ "ltk_mesh",
+ "ltk_meta",
+ "ltk_primitives",
+ "ltk_render",
+ "ltk_wad",
 ]
 
 [[package]]
@@ -493,6 +588,99 @@ name = "log"
 version = "0.4.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04cbf5b083de1c7e0222a7a51dbfdba1cbe1c6ab0b15e29fff3f6c077fd9cd9f"
+
+[[package]]
+name = "ltk_anim"
+version = "0.1.0"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?branch=main#f0117791e8a20ceac82f47b05c39c4027c00b4b6"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "elf_hash",
+ "glam",
+ "io-ext",
+ "num_enum",
+ "thiserror",
+]
+
+[[package]]
+name = "ltk_file"
+version = "0.1.0"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?branch=main#f0117791e8a20ceac82f47b05c39c4027c00b4b6"
+
+[[package]]
+name = "ltk_mesh"
+version = "0.1.0"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?branch=main#f0117791e8a20ceac82f47b05c39c4027c00b4b6"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "glam",
+ "io-ext",
+ "lazy_static",
+ "ltk_primitives",
+ "num_enum",
+ "thiserror",
+]
+
+[[package]]
+name = "ltk_meta"
+version = "0.1.0"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?branch=main#f0117791e8a20ceac82f47b05c39c4027c00b4b6"
+dependencies = [
+ "byteorder",
+ "enum_dispatch",
+ "glam",
+ "io-ext",
+ "log",
+ "ltk_primitives",
+ "miette",
+ "num_enum",
+ "paste",
+ "thiserror",
+]
+
+[[package]]
+name = "ltk_primitives"
+version = "0.1.0"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?branch=main#f0117791e8a20ceac82f47b05c39c4027c00b4b6"
+dependencies = [
+ "byteorder",
+ "glam",
+ "thiserror",
+]
+
+[[package]]
+name = "ltk_render"
+version = "0.1.0"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?branch=main#f0117791e8a20ceac82f47b05c39c4027c00b4b6"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "ddsfile",
+ "image",
+ "image_dds",
+ "num_enum",
+ "texture2ddecoder",
+ "thiserror",
+]
+
+[[package]]
+name = "ltk_wad"
+version = "0.1.0"
+source = "git+https://github.com/LeagueToolkit/league-toolkit?branch=main#f0117791e8a20ceac82f47b05c39c4027c00b4b6"
+dependencies = [
+ "byteorder",
+ "flate2",
+ "io-ext",
+ "itertools 0.14.0",
+ "ltk_file",
+ "memchr",
+ "num_enum",
+ "thiserror",
+ "xxhash-rust",
+ "zstd",
+]
 
 [[package]]
 name = "memchr"
@@ -520,7 +708,7 @@ checksum = "bf45bf44ab49be92fd1227a3be6fc6f617f1a337c06af54981048574d8783147"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.98",
 ]
 
 [[package]]
@@ -542,6 +730,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "moxcms"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddd32fa8935aeadb8a8a6b6b351e40225570a37c43de67690383d87ef170cd08"
+dependencies = [
+ "num-traits",
+ "pxfm",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -556,6 +754,15 @@ name = "num-conv"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
+
+[[package]]
+name = "num-traits"
+version = "0.2.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+dependencies = [
+ "autocfg",
+]
 
 [[package]]
 name = "num_enum"
@@ -575,7 +782,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.98",
 ]
 
 [[package]]
@@ -686,6 +893,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pxfm"
+version = "0.1.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83f9b339b02259ada5c0f4a389b7fb472f933aa17ce176fd2ad98f28bb401fde"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -776,7 +992,7 @@ checksum = "5a9bf7cf98d04a2b28aead066b7496853d4779c9cc183c440dbac457641e19a0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.98",
 ]
 
 [[package]]
@@ -817,6 +1033,17 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "syn"
+version = "1.0.109"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
 version = "2.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36147f1a48ae0ec2b5b3bc5b537d267457555a10dc06f3dbc8cb11ba3006d3b1"
@@ -824,6 +1051,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "texture2ddecoder"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "427ae8ec7f2f0fdd3146b77cfa44bea880caf066f7e55398a8467afe2645c832"
+dependencies = [
+ "paste",
 ]
 
 [[package]]
@@ -843,7 +1079,7 @@ checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.98",
 ]
 
 [[package]]
@@ -942,7 +1178,7 @@ checksum = "395ae124c09f9e6918a2310af6038fba074bcf474ac352496d5910dd59a2226d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.98",
 ]
 
 [[package]]
@@ -1081,7 +1317,7 @@ dependencies = [
  "colored",
  "csv",
  "eyre",
- "itertools",
+ "itertools 0.12.1",
  "league-toolkit",
  "parking_lot",
  "regex",
@@ -1125,7 +1361,7 @@ dependencies = [
  "log",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.98",
  "wasm-bindgen-shared",
 ]
 
@@ -1147,7 +1383,7 @@ checksum = "8ae87ea40c9f689fc23f209965b6fb8a99ad69aeeb0231408be24920604395de"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.98",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -1363,6 +1599,12 @@ checksum = "59690dea168f2198d1a3b0cac23b8063efcd11012f10ae4698f284808c8ef603"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 
 [[package]]
 name = "zstd"
