@@ -16,6 +16,8 @@ use std::{
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use tracing_indicatif::style::ProgressStyle;
 
+const MAX_LOG_PATH_LEN: usize = 120;
+
 pub struct Extractor<'chunks> {
     decoder: &'chunks mut WadDecoder<'chunks, &'chunks File>,
     hashtable: &'chunks WadHashtable,
@@ -137,7 +139,8 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
         let chunk_path = Path::new(chunk_path_str.as_ref());
 
         // advance progress for every chunk (including ones we skip)
-        report_progress(i as f64 / chunks.len() as f64, chunk_path.to_str())?;
+        let truncated = truncate_middle(chunk_path_str.as_ref(), MAX_LOG_PATH_LEN);
+        report_progress(i as f64 / chunks.len() as f64, Some(truncated.as_str()))?;
 
         if let Some(regex) = filter_pattern {
             if !regex.is_match(chunk_path_str.as_ref()).unwrap_or(false) {
@@ -185,10 +188,9 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
     if error.kind() == io::ErrorKind::InvalidFilename {
         write_long_filename_chunk(chunk, chunk_path, extract_directory, &chunk_data)
     } else {
-        Err(error).wrap_err(format!(
-            "failed to write chunk (chunk_path: {})",
-            chunk_path.display()
-        ))
+        let disp = chunk_path.display().to_string();
+        let truncated = truncate_middle(&disp, MAX_LOG_PATH_LEN);
+        Err(error).wrap_err(format!("failed to write chunk (chunk_path: {})", truncated))
     }
 }
 
@@ -236,13 +238,43 @@ fn write_long_filename_chunk(
     chunk_data: &[u8],
 ) -> eyre::Result<()> {
     let hashed_path = format!("{:016x}", chunk.path_hash());
+    let disp = chunk_path.as_ref().display().to_string();
+    let truncated = truncate_middle(&disp, MAX_LOG_PATH_LEN);
     tracing::warn!(
-        "invalid chunk filename, writing as hashed path (chunk_path: {}, hashed_path: {})",
-        chunk_path.as_ref().display(),
+        "Long filename detected (chunk_path: {}, hashed_path: {})",
+        truncated,
         &hashed_path
     );
 
     fs::write(extract_directory.as_ref().join(hashed_path), chunk_data)?;
 
     Ok(())
+}
+
+fn truncate_middle(input: &str, max_len: usize) -> String {
+    if input.len() <= max_len {
+        return input.to_string();
+    }
+    if max_len <= 3 {
+        return "...".to_string();
+    }
+    let keep = max_len - 3;
+    let left = keep / 2;
+    let right = keep - left;
+    let mut left_iter = input.chars();
+    let mut left_str = String::with_capacity(left);
+    for _ in 0..left {
+        if let Some(c) = left_iter.next() {
+            left_str.push(c);
+        }
+    }
+    let mut right_iter = input.chars().rev();
+    let mut right_str = String::with_capacity(right);
+    for _ in 0..right {
+        if let Some(c) = right_iter.next() {
+            right_str.push(c);
+        }
+    }
+    right_str = right_str.chars().rev().collect();
+    format!("{}...{}", left_str, right_str)
 }
