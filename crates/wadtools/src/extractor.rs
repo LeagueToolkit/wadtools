@@ -1,4 +1,4 @@
-use crate::utils::{is_chunk_path, WadHashtable};
+use crate::utils::{is_hex_chunk_path, truncate_middle, WadHashtable};
 use color_eyre::eyre::{self, Ok};
 use eyre::Context;
 use fancy_regex::Regex;
@@ -9,12 +9,14 @@ use league_toolkit::{
 use std::{
     collections::HashMap,
     ffi::OsStr,
-    fs::{self, DirBuilder, File},
+    fs::{self, File},
     io::{self, Read, Seek},
     path::{Path, PathBuf},
 };
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use tracing_indicatif::style::ProgressStyle;
+
+const MAX_LOG_PATH_LEN: usize = 120;
 
 pub struct Extractor<'chunks> {
     decoder: &'chunks mut WadDecoder<'chunks, &'chunks File>,
@@ -55,13 +57,6 @@ impl<'chunks> Extractor<'chunks> {
         span.pb_set_message("Extracting chunks");
         span.pb_set_finish_message("Extraction complete");
 
-        prepare_extraction_directories_absolute(
-            chunks.iter(),
-            self.hashtable,
-            &extract_directory,
-            self.filter_pattern.as_ref(),
-        )?;
-
         extract_wad_chunks(
             self.decoder,
             chunks,
@@ -84,44 +79,6 @@ impl<'chunks> Extractor<'chunks> {
     }
 }
 
-pub fn prepare_extraction_directories_absolute<'chunks>(
-    chunks: impl Iterator<Item = (&'chunks u64, &'chunks WadChunk)>,
-    wad_hashtable: &WadHashtable,
-    extraction_directory: impl AsRef<Path>,
-    filter_pattern: Option<&Regex>,
-) -> eyre::Result<()> {
-    // collect all chunk directories
-    let chunk_directories = chunks.filter_map(|(_, chunk)| {
-        let chunk_path_str = wad_hashtable.resolve_path(chunk.path_hash());
-        if let Some(regex) = filter_pattern {
-            if !regex.is_match(chunk_path_str.as_ref()).unwrap_or(false) {
-                return None;
-            }
-        }
-        Path::new(chunk_path_str.as_ref())
-            .parent()
-            .map(|path| path.to_path_buf())
-    });
-
-    create_extraction_directories(chunk_directories, extraction_directory)?;
-
-    Ok(())
-}
-
-fn create_extraction_directories(
-    chunk_directories: impl Iterator<Item = impl AsRef<Path>>,
-    extraction_directory: impl AsRef<Path>,
-) -> eyre::Result<()> {
-    // this wont error if the directory already exists since recursive mode is enabled
-    for chunk_directory in chunk_directories {
-        DirBuilder::new()
-            .recursive(true)
-            .create(extraction_directory.as_ref().join(chunk_directory))?;
-    }
-
-    Ok(())
-}
-
 pub fn extract_wad_chunks<TSource: Read + Seek>(
     decoder: &mut WadDecoder<TSource>,
     chunks: &HashMap<u64, WadChunk>,
@@ -137,7 +94,8 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
         let chunk_path = Path::new(chunk_path_str.as_ref());
 
         // advance progress for every chunk (including ones we skip)
-        report_progress(i as f64 / chunks.len() as f64, chunk_path.to_str())?;
+        let truncated = truncate_middle(chunk_path_str.as_ref(), MAX_LOG_PATH_LEN);
+        report_progress(i as f64 / chunks.len() as f64, Some(truncated.as_str()))?;
 
         if let Some(regex) = filter_pattern {
             if !regex.is_match(chunk_path_str.as_ref()).unwrap_or(false) {
@@ -146,7 +104,7 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
             }
         }
 
-        extract_wad_chunk_absolute(decoder, chunk, chunk_path, &extract_directory, filter_type)?;
+        extract_wad_chunk(decoder, chunk, chunk_path, &extract_directory, filter_type)?;
 
         i += 1;
     }
@@ -154,7 +112,7 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
     Ok(())
 }
 
-pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
+pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
     decoder: &mut WadDecoder<'wad, TSource>,
     chunk: &WadChunk,
     chunk_path: impl AsRef<Path>,
@@ -176,8 +134,12 @@ pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
         return Ok(());
     }
 
-    let chunk_path = resolve_final_chunk_path(chunk_path, &chunk_data);
-    let Err(error) = fs::write(extract_directory.as_ref().join(&chunk_path), &chunk_data) else {
+    let chunk_path = resolve_final_chunk_path(&extract_directory, chunk_path, &chunk_data);
+    let full_path = extract_directory.as_ref().join(&chunk_path);
+    if let Some(parent) = full_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let Err(error) = fs::write(&full_path, &chunk_data) else {
         return Ok(());
     };
 
@@ -187,33 +149,46 @@ pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
     } else {
         Err(error).wrap_err(format!(
             "failed to write chunk (chunk_path: {})",
-            chunk_path.display()
+            truncate_middle(&full_path.display().to_string(), MAX_LOG_PATH_LEN)
         ))
     }
 }
 
-fn resolve_final_chunk_path(chunk_path: impl AsRef<Path>, chunk_data: &[u8]) -> PathBuf {
-    let mut chunk_path = chunk_path.as_ref().to_path_buf();
-    if chunk_path.extension().is_none() && is_chunk_path(&chunk_path) {
-        // check for known extensions
-        match LeagueFileKind::identify_from_bytes(chunk_data) {
-            LeagueFileKind::Unknown => {
-                tracing::warn!(
-                    "chunk has no known extension, prepending '.' (chunk_path: {})",
-                    chunk_path.display()
-                );
+fn resolve_final_chunk_path(
+    extract_directory: impl AsRef<Path>,
+    chunk_path: impl AsRef<Path>,
+    chunk_data: &[u8],
+) -> PathBuf {
+    let mut final_path = chunk_path.as_ref().to_path_buf();
 
-                chunk_path = chunk_path.with_file_name(OsStr::new(
-                    &(".".to_string() + chunk_path.file_name().unwrap().to_string_lossy().as_ref()),
-                ));
-            }
-            file_kind => {
-                chunk_path.set_extension(file_kind.extension().unwrap());
-            }
-        }
+    // Hashed paths must remain exactly 16 hex characters with no extension
+    if is_hex_chunk_path(&final_path) {
+        return final_path;
     }
 
-    chunk_path
+    // - If the original path has no extension, affix .ltk (and real extension if known)
+    // - OR if the destination path collides with an existing directory, affix .ltk
+    let has_extension = final_path.extension().is_some();
+    let collides_with_dir = extract_directory.as_ref().join(&final_path).is_dir();
+    if !has_extension || collides_with_dir {
+        let original_stem = chunk_path
+            .as_ref()
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy();
+        let new_name = build_ltk_name(&original_stem, chunk_data);
+        final_path.set_file_name(OsStr::new(&new_name));
+    }
+
+    final_path
+}
+
+fn build_ltk_name(file_stem: &str, chunk_data: &[u8]) -> String {
+    let kind = LeagueFileKind::identify_from_bytes(chunk_data);
+    match kind.extension() {
+        Some(ext) => format!("{}.ltk.{}", file_stem, ext),
+        None => format!("{}.ltk", file_stem),
+    }
 }
 
 fn write_long_filename_chunk(
@@ -223,29 +198,15 @@ fn write_long_filename_chunk(
     chunk_data: &[u8],
 ) -> eyre::Result<()> {
     let hashed_path = format!("{:016x}", chunk.path_hash());
+    let disp = chunk_path.as_ref().display().to_string();
+    let truncated = truncate_middle(&disp, MAX_LOG_PATH_LEN);
     tracing::warn!(
-        "invalid chunk filename, writing as hashed path (chunk_path: {}, hashed_path: {})",
-        chunk_path.as_ref().display(),
+        "Long filename detected (chunk_path: {}, hashed_path: {})",
+        truncated,
         &hashed_path
     );
 
-    let file_kind = LeagueFileKind::identify_from_bytes(chunk_data);
-    let extension = file_kind.extension();
-
-    match file_kind {
-        LeagueFileKind::Unknown => {
-            fs::write(extract_directory.as_ref().join(hashed_path), chunk_data)?;
-        }
-        _ => {
-            fs::write(
-                extract_directory
-                    .as_ref()
-                    .join(format!("{:016x}", chunk.path_hash()))
-                    .with_extension(extension.unwrap()),
-                chunk_data,
-            )?;
-        }
-    }
+    fs::write(extract_directory.as_ref().join(hashed_path), chunk_data)?;
 
     Ok(())
 }
