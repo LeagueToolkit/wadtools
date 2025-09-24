@@ -1,4 +1,4 @@
-use crate::utils::{is_hex_chunk_path, WadHashtable};
+use crate::utils::{is_hex_chunk_path, truncate_middle, WadHashtable};
 use color_eyre::eyre::{self, Ok};
 use eyre::Context;
 use fancy_regex::Regex;
@@ -9,7 +9,7 @@ use league_toolkit::{
 use std::{
     collections::HashMap,
     ffi::OsStr,
-    fs::{self, DirBuilder, File},
+    fs::{self, File},
     io::{self, Read, Seek},
     path::{Path, PathBuf},
 };
@@ -57,13 +57,6 @@ impl<'chunks> Extractor<'chunks> {
         span.pb_set_message("Extracting chunks");
         span.pb_set_finish_message("Extraction complete");
 
-        prepare_extraction_directories_absolute(
-            chunks.iter(),
-            self.hashtable,
-            &extract_directory,
-            self.filter_pattern.as_ref(),
-        )?;
-
         extract_wad_chunks(
             self.decoder,
             chunks,
@@ -84,44 +77,6 @@ impl<'chunks> Extractor<'chunks> {
 
         Ok(())
     }
-}
-
-pub fn prepare_extraction_directories_absolute<'chunks>(
-    chunks: impl Iterator<Item = (&'chunks u64, &'chunks WadChunk)>,
-    wad_hashtable: &WadHashtable,
-    extraction_directory: impl AsRef<Path>,
-    filter_pattern: Option<&Regex>,
-) -> eyre::Result<()> {
-    // collect all chunk directories
-    let chunk_directories = chunks.filter_map(|(_, chunk)| {
-        let chunk_path_str = wad_hashtable.resolve_path(chunk.path_hash());
-        if let Some(regex) = filter_pattern {
-            if !regex.is_match(chunk_path_str.as_ref()).unwrap_or(false) {
-                return None;
-            }
-        }
-        Path::new(chunk_path_str.as_ref())
-            .parent()
-            .map(|path| path.to_path_buf())
-    });
-
-    create_extraction_directories(chunk_directories, extraction_directory)?;
-
-    Ok(())
-}
-
-fn create_extraction_directories(
-    chunk_directories: impl Iterator<Item = impl AsRef<Path>>,
-    extraction_directory: impl AsRef<Path>,
-) -> eyre::Result<()> {
-    // this wont error if the directory already exists since recursive mode is enabled
-    for chunk_directory in chunk_directories {
-        DirBuilder::new()
-            .recursive(true)
-            .create(extraction_directory.as_ref().join(chunk_directory))?;
-    }
-
-    Ok(())
 }
 
 pub fn extract_wad_chunks<TSource: Read + Seek>(
@@ -180,7 +135,11 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
     }
 
     let chunk_path = resolve_final_chunk_path(&extract_directory, chunk_path, &chunk_data);
-    let Err(error) = fs::write(extract_directory.as_ref().join(&chunk_path), &chunk_data) else {
+    let full_path = extract_directory.as_ref().join(&chunk_path);
+    if let Some(parent) = full_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let Err(error) = fs::write(&full_path, &chunk_data) else {
         return Ok(());
     };
 
@@ -188,9 +147,10 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
     if error.kind() == io::ErrorKind::InvalidFilename {
         write_long_filename_chunk(chunk, chunk_path, extract_directory, &chunk_data)
     } else {
-        let disp = chunk_path.display().to_string();
-        let truncated = truncate_middle(&disp, MAX_LOG_PATH_LEN);
-        Err(error).wrap_err(format!("failed to write chunk (chunk_path: {})", truncated))
+        Err(error).wrap_err(format!(
+            "failed to write chunk (chunk_path: {})",
+            truncate_middle(&full_path.display().to_string(), MAX_LOG_PATH_LEN)
+        ))
     }
 }
 
@@ -249,32 +209,4 @@ fn write_long_filename_chunk(
     fs::write(extract_directory.as_ref().join(hashed_path), chunk_data)?;
 
     Ok(())
-}
-
-fn truncate_middle(input: &str, max_len: usize) -> String {
-    if input.len() <= max_len {
-        return input.to_string();
-    }
-    if max_len <= 3 {
-        return "...".to_string();
-    }
-    let keep = max_len - 3;
-    let left = keep / 2;
-    let right = keep - left;
-    let mut left_iter = input.chars();
-    let mut left_str = String::with_capacity(left);
-    for _ in 0..left {
-        if let Some(c) = left_iter.next() {
-            left_str.push(c);
-        }
-    }
-    let mut right_iter = input.chars().rev();
-    let mut right_str = String::with_capacity(right);
-    for _ in 0..right {
-        if let Some(c) = right_iter.next() {
-            right_str.push(c);
-        }
-    }
-    right_str = right_str.chars().rev().collect();
-    format!("{}...{}", left_str, right_str)
 }
