@@ -1,8 +1,11 @@
 use std::{collections::HashMap, fs::File};
 
-use league_toolkit::core::wad::{Wad, WadChunk};
+use league_toolkit::{
+    file::LeagueFileKind,
+    wad::{Wad, WadChunk},
+};
 
-use crate::{extractor::Extractor, league_file::LeagueFileKind, utils::WadHashtable};
+use crate::{extractor::Extractor, utils::WadHashtable};
 use regex::Regex;
 
 pub struct ExtractArgs {

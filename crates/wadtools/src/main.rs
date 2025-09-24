@@ -1,16 +1,14 @@
 use clap::{Parser, Subcommand};
+use league_toolkit::file::LeagueFileKind;
 use tracing_indicatif::IndicatifLayer;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 mod commands;
 mod extractor;
-mod league_file;
 mod utils;
 
 use commands::*;
-
-use crate::league_file::LeagueFileKind;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -35,7 +33,13 @@ pub enum Commands {
         #[arg(long)]
         hashtable: Option<String>,
 
-        #[arg(long, value_name = "FILTER_MAGIC", help = "Filter files by magic (e.g., 'png', 'bin').", value_parser = parse_filter_type)]
+        #[arg(
+            long,
+            value_name = "FILTER_MAGIC",
+            help = "Filter files by magic (e.g., 'png', 'bin'). You can pass multiple values at once.",
+            value_parser = parse_filter_type,
+            num_args = 1..
+        )]
         filter_type: Option<Vec<LeagueFileKind>>,
 
         /// Only extract chunks whose resolved path matches this regex
@@ -128,7 +132,7 @@ fn initialize_tracing() -> eyre::Result<()> {
 
 // parses filter type for clap arguments
 fn parse_filter_type(s: &str) -> Result<LeagueFileKind, String> {
-    match league_file::get_league_file_kind_from_extension(s) {
+    match LeagueFileKind::from_extension(s) {
         LeagueFileKind::Unknown => Err(format!("Unknown file kind: {}", s)),
         other => Ok(other),
     }

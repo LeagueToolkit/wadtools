@@ -1,10 +1,10 @@
-use crate::{
-    league_file::{get_extension_from_league_file_kind, identify_league_file, LeagueFileKind},
-    utils::{is_chunk_path, WadHashtable},
-};
+use crate::utils::{is_chunk_path, WadHashtable};
 use color_eyre::eyre::{self, Ok};
 use eyre::Context;
-use league_toolkit::core::wad::{WadChunk, WadDecoder};
+use league_toolkit::{
+    file::LeagueFileKind,
+    wad::{WadChunk, WadDecoder},
+};
 use regex::Regex;
 use std::{
     collections::HashMap,
@@ -166,7 +166,7 @@ pub fn extract_wad_chunk_absolute<'wad, TSource: Read + Seek>(
         chunk_path.as_ref().display()
     ))?;
 
-    let chunk_kind = identify_league_file(&chunk_data);
+    let chunk_kind = LeagueFileKind::identify_from_bytes(&chunk_data);
     if filter_type.is_some_and(|filter| !filter.contains(&chunk_kind)) {
         tracing::debug!(
             "skipping chunk (chunk_path: {}, chunk_kind: {:?})",
@@ -196,7 +196,7 @@ fn resolve_final_chunk_path(chunk_path: impl AsRef<Path>, chunk_data: &[u8]) -> 
     let mut chunk_path = chunk_path.as_ref().to_path_buf();
     if chunk_path.extension().is_none() && is_chunk_path(&chunk_path) {
         // check for known extensions
-        match identify_league_file(chunk_data) {
+        match LeagueFileKind::identify_from_bytes(chunk_data) {
             LeagueFileKind::Unknown => {
                 tracing::warn!(
                     "chunk has no known extension, prepending '.' (chunk_path: {})",
@@ -208,8 +208,7 @@ fn resolve_final_chunk_path(chunk_path: impl AsRef<Path>, chunk_data: &[u8]) -> 
                 ));
             }
             file_kind => {
-                let extension = get_extension_from_league_file_kind(file_kind);
-                chunk_path.set_extension(extension);
+                chunk_path.set_extension(file_kind.extension().unwrap());
             }
         }
     }
@@ -230,8 +229,8 @@ fn write_long_filename_chunk(
         &hashed_path
     );
 
-    let file_kind = identify_league_file(chunk_data);
-    let extension = get_extension_from_league_file_kind(file_kind);
+    let file_kind = LeagueFileKind::identify_from_bytes(chunk_data);
+    let extension = file_kind.extension();
 
     match file_kind {
         LeagueFileKind::Unknown => {
@@ -242,7 +241,7 @@ fn write_long_filename_chunk(
                 extract_directory
                     .as_ref()
                     .join(format!("{:016x}", chunk.path_hash()))
-                    .with_extension(extension),
+                    .with_extension(extension.unwrap()),
                 chunk_data,
             )?;
         }

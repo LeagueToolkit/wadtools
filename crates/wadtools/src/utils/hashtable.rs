@@ -1,5 +1,4 @@
 use color_eyre::eyre::{self, eyre, Result};
-use parking_lot::Mutex;
 use std::{
     collections::HashMap,
     fs::File,
@@ -14,14 +13,12 @@ use super::format_chunk_path_hash;
 
 #[derive(Debug, Clone, Default)]
 pub struct WadHashtable {
-    is_loaded: bool,
     items: HashMap<u64, Arc<str>>,
 }
 
 impl WadHashtable {
     pub fn new() -> Result<Self> {
         Ok(WadHashtable {
-            is_loaded: false,
             items: HashMap::default(),
         })
     }
@@ -33,6 +30,7 @@ impl WadHashtable {
             .unwrap_or_else(|| format_chunk_path_hash(path_hash).into())
     }
 
+    #[allow(dead_code)]
     pub fn add_from_dir(&mut self, dir: impl AsRef<Path>) -> eyre::Result<()> {
         info!("loading wad hasthables from dir: {:?}", dir.as_ref());
 
@@ -45,7 +43,6 @@ impl WadHashtable {
             self.add_from_file(&File::open(wad_hashtable_entry.path())?)?;
         }
         info!("loaded");
-        self.is_loaded = true;
 
         Ok(())
     }
@@ -67,16 +64,12 @@ impl WadHashtable {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn items(&self) -> &HashMap<u64, Arc<str>> {
         &self.items
     }
+    #[allow(dead_code)]
     pub fn items_mut(&mut self) -> &mut HashMap<u64, Arc<str>> {
         &mut self.items
     }
-
-    pub fn is_loaded(&self) -> bool {
-        self.is_loaded
-    }
 }
-
-pub struct WadHashtableState(pub Mutex<WadHashtable>);

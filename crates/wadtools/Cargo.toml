@@ -8,7 +8,10 @@ clap = { version = "4.5.20", features = ["derive"] }
 eyre = "0.6.12"
 toml = "0.8.19"
 regex = "1.11.1"
-league-toolkit = { git = "https://github.com/LeagueToolkit/league-toolkit", version = "0.1.0" }
+league-toolkit = { git = "https://github.com/LeagueToolkit/league-toolkit", branch = "main", features = [
+    "wad",
+    "file",
+] }
 color-eyre = "0.6"
 tracing = "0.1.41"
 parking_lot = "0.12.3"
