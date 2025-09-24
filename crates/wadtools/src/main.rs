@@ -49,7 +49,7 @@ pub enum Commands {
             short = 'x',
             long,
             value_name = "REGEX",
-            help = "Only extract chunks whose resolved path matches this regex"
+            help = "Only extract chunks whose resolved path matches this regex (case-insensitive by default; use (?-i) to disable)"
         )]
         pattern: Option<String>,
     },

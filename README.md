@@ -63,6 +63,10 @@ wadtools --help
 wadtools <COMMAND> --help
 ```
 
+### Regex filtering
+
+`extract --pattern/-x` matches paths using `fancy-regex`. Matching is case-insensitive by default. To opt out for a pattern, prefix it with `(?-i)`. Backreferences and lookarounds are supported.
+
 ## Development
 
 This project uses Rust's nightly features. To contribute:

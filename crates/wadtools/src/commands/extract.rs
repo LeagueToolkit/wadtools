@@ -44,7 +44,14 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
 
 fn create_filter_pattern(pattern: Option<String>) -> eyre::Result<Option<Regex>> {
     match pattern {
-        Some(p) => Ok(Some(Regex::new(&p)?)),
+        Some(mut p) => {
+            // Default to case-insensitive unless the user explicitly sets (?i) or (?-i)
+            let has_inline_flag = p.contains("(?i)") || p.contains("(?-i)");
+            if !has_inline_flag {
+                p = format!("(?i){p}");
+            }
+            Ok(Some(Regex::new(&p)?))
+        }
         None => Ok(None),
     }
 }
