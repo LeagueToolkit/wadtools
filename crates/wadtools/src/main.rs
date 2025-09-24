@@ -20,6 +20,7 @@ struct Args {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Extract the contents of a wad file
+    #[command(visible_alias = "e")]
     Extract {
         /// Path to the input wad file
         #[arg(short, long)]
@@ -30,10 +31,11 @@ pub enum Commands {
         output: String,
 
         /// Path to the hashtable file
-        #[arg(long)]
+        #[arg(short = 'H', long, visible_short_alias = 'd')]
         hashtable: Option<String>,
 
         #[arg(
+            short = 'f',
             long,
             value_name = "FILTER_MAGIC",
             help = "Filter files by magic (e.g., 'png', 'bin'). You can pass multiple values at once.",
@@ -44,6 +46,7 @@ pub enum Commands {
 
         /// Only extract chunks whose resolved path matches this regex
         #[arg(
+            short = 'x',
             long,
             value_name = "REGEX",
             help = "Only extract chunks whose resolved path matches this regex"
@@ -55,6 +58,7 @@ pub enum Commands {
     /// This command compares two wad files and prints the differences between them.
     /// Using the reference wad file, it will print the differences between the target wad file.
     ///
+    #[command(visible_alias = "d")]
     Diff {
         /// Path to the reference wad file
         #[arg(short, long)]
@@ -65,7 +69,7 @@ pub enum Commands {
         target: String,
 
         /// Path to the hashtable file
-        #[arg(long)]
+        #[arg(short = 'H', long, visible_short_alias = 'd')]
         hashtable: Option<String>,
 
         /// Output the diffs to a .csv file
