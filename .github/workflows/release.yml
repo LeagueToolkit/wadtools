@@ -19,6 +19,45 @@ jobs:
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract latest changelog section for this tag
+        id: changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          FILE="CHANGELOG.md"
+          OUT="CHANGELOG_LATEST.md"
+          if [[ ! -f "$FILE" ]]; then
+            echo "Changelog not found. Creating empty body." > "$OUT"
+          else
+            awk -v tag="$TAG" '
+              BEGIN {found=0}
+              /^##[[:space:]]/ {
+                if (found) { exit }
+              }
+              $0 ~ "^##[[:space:]].*" tag "$" || $0 ~ "^##[[:space:]].*\\[" tag "\\]" {
+                found=1
+                next
+              }
+              found { print }
+            ' "$FILE" > "$OUT" || true
+            if ! grep -q '[^[:space:]]' "$OUT"; then
+              awk '
+                BEGIN {start=0}
+                /^##[[:space:]]/ { if (start) { exit } else { start=1; next } }
+                start { print }
+              ' "$FILE" > "$OUT" || true
+            fi
+            if ! grep -q '[^[:space:]]' "$OUT"; then
+              echo "No changelog entries found for $TAG." > "$OUT"
+            fi
+          fi
+          echo "Changelog extracted to $OUT"
+
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -27,6 +66,7 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ github.ref }}
+          body_path: ./CHANGELOG_LATEST.md
           draft: false
           prerelease: false
 

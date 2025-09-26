@@ -1,0 +1,15 @@
+[workspace]
+publish = false
+
+git_tag_enable = true
+git_tag_name = "v{{version}}"
+git_release_enable = true
+git_release_name = "v{{version}}"
+git_release_body = "{{changelog}}"
+
+pr_name = "chore(release): v{{version}}"
+pr_labels = ["release-plz", "release"]
+pr_branch_prefix = "release-plz/"
+
+changelog_update = true
+changelog_path = "CHANGELOG.md"
