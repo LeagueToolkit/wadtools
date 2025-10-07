@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use league_toolkit::file::LeagueFileKind;
 use tracing::Level;
 use tracing_indicatif::IndicatifLayer;
@@ -13,9 +13,45 @@ mod utils;
 
 use commands::*;
 
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum VerbosityLevel {
+    /// Show errors and above
+    Error,
+    /// Show warnings and above
+    Warning,
+    /// Show info messages and above
+    Info,
+    /// Show debug messages and above
+    Debug,
+    /// Show all messages including trace
+    Trace,
+}
+
+impl From<VerbosityLevel> for Level {
+    fn from(level: VerbosityLevel) -> Self {
+        match level {
+            VerbosityLevel::Error => Level::ERROR,
+            VerbosityLevel::Warning => Level::WARN,
+            VerbosityLevel::Info => Level::INFO,
+            VerbosityLevel::Debug => Level::DEBUG,
+            VerbosityLevel::Trace => Level::TRACE,
+        }
+    }
+}
+
+impl VerbosityLevel {
+    pub fn to_level_filter(&self) -> LevelFilter {
+        LevelFilter::from_level((*self).into())
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
+    /// Set the verbosity level
+    #[arg(short = 'L', long, value_enum, default_value_t = VerbosityLevel::Info)]
+    verbosity: VerbosityLevel,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -82,9 +118,9 @@ pub enum Commands {
 }
 
 fn main() -> eyre::Result<()> {
-    initialize_tracing()?;
-
     let args = Args::parse();
+
+    initialize_tracing(args.verbosity)?;
 
     match args.command {
         Commands::Extract {
@@ -114,7 +150,7 @@ fn main() -> eyre::Result<()> {
     }
 }
 
-fn initialize_tracing() -> eyre::Result<()> {
+fn initialize_tracing(verbosity: VerbosityLevel) -> eyre::Result<()> {
     let indicatif_layer = IndicatifLayer::new();
 
     let common_format = fmt::format()
@@ -125,29 +161,52 @@ fn initialize_tracing() -> eyre::Result<()> {
         .with_target(false)
         .with_timer(tracing_subscriber::fmt::time::time());
 
-    // stdout: INFO/DEBUG/TRACE
+    // stdout: INFO/DEBUG/TRACE (when verbosity allows)
     let stdout_layer = fmt::layer()
         .with_writer(indicatif_layer.get_stdout_writer())
         .event_format(common_format.clone())
-        .with_filter(filter::filter_fn(|metadata| {
+        .with_filter(filter::filter_fn(move |metadata| {
             let level = *metadata.level();
-            level == Level::INFO || level == Level::DEBUG || level == Level::TRACE
+            // Show INFO and above on stdout for Info verbosity and above
+            // Show DEBUG and above for Debug verbosity and above
+            // Show TRACE for Trace verbosity
+            match verbosity {
+                VerbosityLevel::Error => {
+                    false // Only stderr for this level
+                }
+                VerbosityLevel::Warning => level == Level::WARN || level == Level::ERROR,
+                VerbosityLevel::Info => {
+                    level == Level::INFO || level == Level::WARN || level == Level::ERROR
+                }
+                VerbosityLevel::Debug => {
+                    level != Level::TRACE // Everything except TRACE
+                }
+                VerbosityLevel::Trace => {
+                    true // Everything
+                }
+            }
         }));
 
-    // stderr: WARN/ERROR
+    // stderr: WARN/ERROR (for Warning and above) or all high-priority messages
     let stderr_layer = fmt::layer()
         .with_writer(indicatif_layer.get_stderr_writer())
         .event_format(common_format)
-        .with_filter(filter::filter_fn(|metadata| {
+        .with_filter(filter::filter_fn(move |metadata| {
             let level = *metadata.level();
-            level == Level::WARN || level == Level::ERROR
+            // Show ERROR and WARN on stderr for most verbosity levels
+            // For very quiet levels, show only ERROR
+            match verbosity {
+                VerbosityLevel::Error => level == Level::ERROR,
+                VerbosityLevel::Warning => level == Level::WARN || level == Level::ERROR,
+                _ => level == Level::WARN || level == Level::ERROR,
+            }
         }));
 
     tracing_subscriber::registry()
         .with(stdout_layer)
         .with(stderr_layer)
         .with(indicatif_layer)
-        .with(LevelFilter::TRACE)
+        .with(verbosity.to_level_filter())
         .init();
     Ok(())
 }
