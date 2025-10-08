@@ -1,7 +1,7 @@
+use camino::{Utf8Path, Utf8PathBuf};
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use camino::{Utf8Path, Utf8PathBuf};
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct Config {

@@ -1,3 +1,4 @@
+use camino::Utf8Path;
 use color_eyre::eyre::{self, eyre, Result};
 use std::{
     collections::HashMap,
@@ -5,7 +6,6 @@ use std::{
     io::{BufRead, BufReader},
     sync::Arc,
 };
-use camino::Utf8Path;
 use tracing::info;
 use walkdir::WalkDir;
 
@@ -42,10 +42,7 @@ impl WadHashtable {
                 continue;
             }
 
-            info!(
-                "loading wad hasthable: {:?}",
-                wad_hashtable_entry.path()
-            );
+            info!("loading wad hasthable: {:?}", wad_hashtable_entry.path());
             self.add_from_file(&File::open(wad_hashtable_entry.path())?)?;
         }
         info!("loaded");

@@ -1,5 +1,5 @@
-use std::{collections::HashMap, fs::File};
 use camino::{Utf8Path, Utf8PathBuf};
+use std::{collections::HashMap, fs::File};
 
 use league_toolkit::{
     file::LeagueFileKind,
