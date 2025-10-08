@@ -138,6 +138,13 @@ wadtools diff -r old.wad.client -t new.wad.client -H hashtable.txt \
   -o diff.csv
 ```
 
+Show the default hashtable directory:
+```bash
+wadtools hashtable-dir
+# or
+wadtools hd
+```
+
 ## Development
 
 1. Install development tools:

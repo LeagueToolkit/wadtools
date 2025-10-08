@@ -11,6 +11,7 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{filter, fmt};
 use utils::config::{default_config_path, load_or_create_config, resolve_and_persist_progress};
+use utils::default_hashtable_dir;
 
 mod commands;
 mod extractor;
@@ -128,6 +129,9 @@ pub enum Commands {
         #[arg(short, long, help = "The path to the output .csv file")]
         output: Option<String>,
     },
+    /// Print the default hashtable directory
+    #[command(visible_alias = "hd")]
+    HashtableDir,
 }
 
 fn main() -> eyre::Result<()> {
@@ -185,6 +189,14 @@ fn main() -> eyre::Result<()> {
             hashtable_path: hashtable,
             output,
         }),
+        Commands::HashtableDir => {
+            if let Some(dir) = default_hashtable_dir() {
+                println!("{}", dir);
+            } else {
+                println!("<no default hashtable directory>");
+            }
+            Ok(())
+        }
     }
 }
 
