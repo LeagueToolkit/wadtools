@@ -1,8 +1,8 @@
+use camino::Utf8Path;
 use clap::builder::{styling::AnsiColor, Styles};
 use clap::error::ErrorKind;
 use clap::{Parser, Subcommand, ValueEnum};
 use league_toolkit::file::LeagueFileKind;
-use std::path::Path;
 use tracing::Level;
 use tracing_indicatif::IndicatifLayer;
 use tracing_subscriber::filter::LevelFilter;
@@ -151,7 +151,7 @@ fn main() -> eyre::Result<()> {
     let config_path = args
         .config
         .as_deref()
-        .map(Path::new)
+        .map(Utf8Path::new)
         .map(|p| p.to_path_buf())
         .unwrap_or_else(default_config_path);
     let (mut config, resolved_path) = load_or_create_config(Some(config_path.as_path()))?;

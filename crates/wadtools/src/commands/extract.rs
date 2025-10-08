@@ -1,4 +1,5 @@
 use std::{collections::HashMap, fs::File};
+use camino::{Utf8Path, Utf8PathBuf};
 
 use league_toolkit::{
     file::LeagueFileKind,
@@ -40,19 +41,14 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
     let extracted_count = get_extracted_count(chunks, &hashtable, filter_pattern.as_ref());
 
     extractor.set_filter_pattern(filter_pattern);
-    let output_dir = match &args.output {
-        Some(path) => path.clone(),
+    let output_dir: Utf8PathBuf = match &args.output {
+        Some(path) => Utf8PathBuf::from(path.as_str()),
         None => {
             // Construct sibling dir named after input file (without extension)
-            let input_path = std::path::Path::new(&args.input);
-            let parent = input_path
-                .parent()
-                .unwrap_or_else(|| std::path::Path::new("."));
-            let stem = input_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("extracted");
-            parent.join(stem).to_string_lossy().to_string()
+            let input_path = Utf8Path::new(&args.input);
+            let parent = input_path.parent().unwrap_or(Utf8Path::new("."));
+            let stem = input_path.file_stem().unwrap_or("extracted");
+            parent.join(stem)
         }
     };
     extractor.extract_chunks(chunks, &output_dir, args.filter_type.as_deref())?;

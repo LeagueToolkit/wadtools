@@ -1,4 +1,5 @@
 use crate::utils::{is_hex_chunk_path, truncate_middle, WadHashtable};
+use camino::{Utf8Path, Utf8PathBuf};
 use color_eyre::eyre::{self, Ok};
 use eyre::Context;
 use fancy_regex::Regex;
@@ -8,10 +9,8 @@ use league_toolkit::{
 };
 use std::{
     collections::HashMap,
-    ffi::OsStr,
     fs::{self, File},
     io::{self, Read, Seek},
-    path::{Path, PathBuf},
 };
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use tracing_indicatif::style::ProgressStyle;
@@ -43,7 +42,7 @@ impl<'chunks> Extractor<'chunks> {
     pub fn extract_chunks(
         &mut self,
         chunks: &HashMap<u64, WadChunk>,
-        extract_directory: impl AsRef<Path>,
+        extract_directory: impl AsRef<Utf8Path>,
         filter_type: Option<&[LeagueFileKind]>,
     ) -> eyre::Result<()> {
         let total = chunks.len() as u64;
@@ -83,7 +82,7 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
     decoder: &mut WadDecoder<TSource>,
     chunks: &HashMap<u64, WadChunk>,
     wad_hashtable: &WadHashtable,
-    extract_directory: PathBuf,
+    extract_directory: Utf8PathBuf,
     report_progress: impl Fn(f64, Option<&str>) -> eyre::Result<()>,
     filter_type: Option<&[LeagueFileKind]>,
     filter_pattern: Option<&Regex>,
@@ -91,7 +90,7 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
     let mut i = 0;
     for chunk in chunks.values() {
         let chunk_path_str = wad_hashtable.resolve_path(chunk.path_hash());
-        let chunk_path = Path::new(chunk_path_str.as_ref());
+        let chunk_path = Utf8Path::new(chunk_path_str.as_ref());
 
         // advance progress for every chunk (including ones we skip)
         let truncated = truncate_middle(chunk_path_str.as_ref(), MAX_LOG_PATH_LEN);
@@ -115,20 +114,20 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
 pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
     decoder: &mut WadDecoder<'wad, TSource>,
     chunk: &WadChunk,
-    chunk_path: impl AsRef<Path>,
-    extract_directory: impl AsRef<Path>,
+    chunk_path: impl AsRef<Utf8Path>,
+    extract_directory: impl AsRef<Utf8Path>,
     filter_type: Option<&[LeagueFileKind]>,
 ) -> eyre::Result<()> {
     let chunk_data = decoder.load_chunk_decompressed(chunk).wrap_err(format!(
         "failed to decompress chunk (chunk_path: {})",
-        chunk_path.as_ref().display()
+        chunk_path.as_ref().as_str()
     ))?;
 
     let chunk_kind = LeagueFileKind::identify_from_bytes(&chunk_data);
     if filter_type.is_some_and(|filter| !filter.contains(&chunk_kind)) {
         tracing::debug!(
             "skipping chunk (chunk_path: {}, chunk_kind: {:?})",
-            chunk_path.as_ref().display(),
+            chunk_path.as_ref().as_str(),
             chunk_kind
         );
         return Ok(());
@@ -137,9 +136,9 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
     let chunk_path = resolve_final_chunk_path(&extract_directory, chunk_path, &chunk_data);
     let full_path = extract_directory.as_ref().join(&chunk_path);
     if let Some(parent) = full_path.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent.as_std_path())?;
     }
-    let Err(error) = fs::write(&full_path, &chunk_data) else {
+    let Err(error) = fs::write(full_path.as_std_path(), &chunk_data) else {
         return Ok(());
     };
 
@@ -149,20 +148,20 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
     } else {
         Err(error).wrap_err(format!(
             "failed to write chunk (chunk_path: {})",
-            truncate_middle(&full_path.display().to_string(), MAX_LOG_PATH_LEN)
+            truncate_middle(full_path.as_str(), MAX_LOG_PATH_LEN)
         ))
     }
 }
 
 fn resolve_final_chunk_path(
-    extract_directory: impl AsRef<Path>,
-    chunk_path: impl AsRef<Path>,
+    extract_directory: impl AsRef<Utf8Path>,
+    chunk_path: impl AsRef<Utf8Path>,
     chunk_data: &[u8],
-) -> PathBuf {
+) -> Utf8PathBuf {
     let mut final_path = chunk_path.as_ref().to_path_buf();
 
     // Hashed paths must remain exactly 16 hex characters with no extension
-    if is_hex_chunk_path(&final_path) {
+    if is_hex_chunk_path(final_path.as_path()) {
         return final_path;
     }
 
@@ -171,13 +170,9 @@ fn resolve_final_chunk_path(
     let has_extension = final_path.extension().is_some();
     let collides_with_dir = extract_directory.as_ref().join(&final_path).is_dir();
     if !has_extension || collides_with_dir {
-        let original_stem = chunk_path
-            .as_ref()
-            .file_stem()
-            .unwrap_or_default()
-            .to_string_lossy();
-        let new_name = build_ltk_name(&original_stem, chunk_data);
-        final_path.set_file_name(OsStr::new(&new_name));
+        let original_stem = chunk_path.as_ref().file_stem().unwrap_or("");
+        let new_name = build_ltk_name(original_stem, chunk_data);
+        final_path.set_file_name(&new_name);
     }
 
     final_path
@@ -193,12 +188,12 @@ fn build_ltk_name(file_stem: &str, chunk_data: &[u8]) -> String {
 
 fn write_long_filename_chunk(
     chunk: &WadChunk,
-    chunk_path: impl AsRef<Path>,
-    extract_directory: impl AsRef<Path>,
+    chunk_path: impl AsRef<Utf8Path>,
+    extract_directory: impl AsRef<Utf8Path>,
     chunk_data: &[u8],
 ) -> eyre::Result<()> {
     let hashed_path = format!("{:016x}", chunk.path_hash());
-    let disp = chunk_path.as_ref().display().to_string();
+    let disp = chunk_path.as_ref().as_str().to_string();
     let truncated = truncate_middle(&disp, MAX_LOG_PATH_LEN);
     tracing::warn!(
         "Long filename detected (chunk_path: {}, hashed_path: {})",
@@ -206,7 +201,10 @@ fn write_long_filename_chunk(
         &hashed_path
     );
 
-    fs::write(extract_directory.as_ref().join(hashed_path), chunk_data)?;
+    fs::write(
+        extract_directory.as_ref().join(hashed_path).as_std_path(),
+        chunk_data,
+    )?;
 
     Ok(())
 }

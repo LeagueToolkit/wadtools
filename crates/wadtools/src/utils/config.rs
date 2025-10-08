@@ -1,7 +1,7 @@
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use camino::{Utf8Path, Utf8PathBuf};
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct Config {
@@ -18,19 +18,19 @@ impl Config {
     }
 }
 
-pub fn default_config_path() -> PathBuf {
+pub fn default_config_path() -> Utf8PathBuf {
     // For now, keep it alongside the binary working dir: ./wadtools.toml
-    PathBuf::from("wadtools.toml")
+    Utf8PathBuf::from("wadtools.toml")
 }
 
-pub fn load_config(path: Option<&Path>) -> Result<Config> {
+pub fn load_config(path: Option<&Utf8Path>) -> Result<Config> {
     let final_path = match path {
         Some(p) => p.to_path_buf(),
         None => default_config_path(),
     };
 
     if final_path.exists() {
-        let contents = fs::read_to_string(final_path)?;
+        let contents = fs::read_to_string(final_path.as_std_path())?;
         let cfg: Config = toml::from_str(&contents)?;
         Ok(cfg)
     } else {
@@ -38,19 +38,19 @@ pub fn load_config(path: Option<&Path>) -> Result<Config> {
     }
 }
 
-pub fn save_config(path: Option<&Path>, cfg: &Config) -> Result<()> {
+pub fn save_config(path: Option<&Utf8Path>, cfg: &Config) -> Result<()> {
     let final_path = match path {
         Some(p) => p.to_path_buf(),
         None => default_config_path(),
     };
     let toml_str = toml::to_string_pretty(cfg)?;
-    fs::write(final_path, toml_str)?;
+    fs::write(final_path.as_std_path(), toml_str)?;
     Ok(())
 }
 
 /// Loads config and ensures a file exists by writing defaults if missing.
 /// Returns the loaded config and the resolved path it was loaded/saved from.
-pub fn load_or_create_config(path: Option<&Path>) -> Result<(Config, PathBuf)> {
+pub fn load_or_create_config(path: Option<&Utf8Path>) -> Result<(Config, Utf8PathBuf)> {
     let final_path = match path {
         Some(p) => p.to_path_buf(),
         None => default_config_path(),
@@ -70,7 +70,7 @@ pub fn load_or_create_config(path: Option<&Path>) -> Result<(Config, PathBuf)> {
 /// Resolves progress (CLI overrides config). If CLI provided, persist updated value.
 pub fn resolve_and_persist_progress(
     cfg: &mut Config,
-    path: &Path,
+    path: &Utf8Path,
     cli_progress: Option<bool>,
 ) -> Result<bool> {
     let show_progress = cfg.resolve_show_progress(cli_progress);
