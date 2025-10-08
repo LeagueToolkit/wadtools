@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.0](https://github.com/LeagueToolkit/wadtools/releases/tag/v0.4.0) - 2025-10-08
+## [0.5.0](https://github.com/LeagueToolkit/wadtools/releases/tag/v0.5.0) - 2025-10-08
 
 ### Added
 
@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - default hashtable dir
 - config
 - add verbosity level control for tracing output
+
+### Other
+
+- update README with config and hashtable discovery details; refactor diff and extract commands to load default hashtable directory
+- remove redundant logging in add_from_dir method
+
+## [0.4.0](https://github.com/LeagueToolkit/wadtools/releases/tag/v0.4.0) - 2025-10-08
+
 - truncate long filenames in log and remove useless directory prep
 - truncate long file names
 - use ltk chunk extensions
@@ -36,9 +44,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - show correct number of extracted chunks
 
 ### Other
-
-- update README with config and hashtable discovery details; refactor diff and extract commands to load default hashtable directory
-- remove redundant logging in add_from_dir method
 - *(release)* v0.4.0
 - satisfy format lints
 - makes sure that hashed filenames are zero padded
