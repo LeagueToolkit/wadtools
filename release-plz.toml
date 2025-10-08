@@ -2,8 +2,15 @@
 publish = false
 git_tag_enable = true
 git_release_enable = true
+release_always = false
+pr_draft = true
 
 pr_labels = ["release-plz", "release"]
 
 changelog_update = true
-changelog_path = "CHANGELOG.md"
+changelog_path = "./CHANGELOG.md"
+
+[[package]]
+name = "wadtools"
+release = true
+publish = false
