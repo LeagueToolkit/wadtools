@@ -32,8 +32,6 @@ impl WadHashtable {
 
     #[allow(dead_code)]
     pub fn add_from_dir(&mut self, dir: impl AsRef<Utf8Path>) -> eyre::Result<()> {
-        info!("loading wad hasthables from dir: {}", dir.as_ref().as_str());
-
         for wad_hashtable_entry in WalkDir::new(dir.as_ref().as_std_path())
             .into_iter()
             .filter_map(|x| x.ok())
@@ -45,7 +43,6 @@ impl WadHashtable {
             info!("loading wad hasthable: {:?}", wad_hashtable_entry.path());
             self.add_from_file(&File::open(wad_hashtable_entry.path())?)?;
         }
-        info!("loaded");
 
         Ok(())
     }
