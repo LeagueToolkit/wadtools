@@ -1,3 +1,4 @@
+pub mod config;
 mod hashtable;
 
 use std::path::Path;

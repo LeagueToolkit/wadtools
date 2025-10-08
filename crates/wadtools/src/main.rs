@@ -1,5 +1,8 @@
+use clap::builder::{styling::AnsiColor, Styles};
+use clap::error::ErrorKind;
 use clap::{Parser, Subcommand, ValueEnum};
 use league_toolkit::file::LeagueFileKind;
+use std::path::Path;
 use tracing::Level;
 use tracing_indicatif::IndicatifLayer;
 use tracing_subscriber::filter::LevelFilter;
@@ -7,6 +10,8 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{filter, fmt};
+use utils::config::{default_config_path, load_or_create_config, resolve_and_persist_progress};
+
 mod commands;
 mod extractor;
 mod utils;
@@ -46,11 +51,19 @@ impl VerbosityLevel {
 }
 
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about = None, styles = cli_styles())]
 struct Args {
     /// Set the verbosity level
     #[arg(short = 'L', long, value_enum, default_value_t = VerbosityLevel::Info)]
     verbosity: VerbosityLevel,
+
+    /// Optional path to a config file (TOML). Defaults to `wadtools.toml` if present
+    #[arg(long)]
+    config: Option<String>,
+
+    /// Show or hide progress bars: true/false (overrides config). Example: --progress=false
+    #[arg(long, value_name = "true|false")]
+    progress: Option<bool>,
 
     #[command(subcommand)]
     command: Commands,
@@ -118,9 +131,34 @@ pub enum Commands {
 }
 
 fn main() -> eyre::Result<()> {
-    let args = Args::parse();
+    let args = match Args::try_parse() {
+        Ok(a) => a,
+        Err(e) => {
+            if matches!(
+                e.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion | ErrorKind::MissingSubcommand
+            ) {
+                // Ensure a default config exists even when showing help/version or missing subcommand
+                let _ = load_or_create_config(Some(default_config_path().as_path()));
+                e.print()?;
+                return Ok(());
+            } else {
+                e.exit();
+            }
+        }
+    };
 
-    initialize_tracing(args.verbosity)?;
+    let config_path = args
+        .config
+        .as_deref()
+        .map(Path::new)
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(default_config_path);
+    let (mut config, resolved_path) = load_or_create_config(Some(config_path.as_path()))?;
+    let show_progress =
+        resolve_and_persist_progress(&mut config, resolved_path.as_path(), args.progress)?;
+
+    initialize_tracing(args.verbosity, show_progress)?;
 
     match args.command {
         Commands::Extract {
@@ -150,7 +188,7 @@ fn main() -> eyre::Result<()> {
     }
 }
 
-fn initialize_tracing(verbosity: VerbosityLevel) -> eyre::Result<()> {
+fn initialize_tracing(verbosity: VerbosityLevel, show_progress: bool) -> eyre::Result<()> {
     let indicatif_layer = IndicatifLayer::new();
 
     let common_format = fmt::format()
@@ -202,19 +240,30 @@ fn initialize_tracing(verbosity: VerbosityLevel) -> eyre::Result<()> {
             }
         }));
 
-    tracing_subscriber::registry()
+    let registry = tracing_subscriber::registry()
         .with(stdout_layer)
         .with(stderr_layer)
-        .with(indicatif_layer)
-        .with(verbosity.to_level_filter())
-        .init();
+        .with(verbosity.to_level_filter());
+
+    if show_progress {
+        registry.with(indicatif_layer).init();
+    } else {
+        registry.init();
+    }
     Ok(())
 }
 
-// parses filter type for clap arguments
 fn parse_filter_type(s: &str) -> Result<LeagueFileKind, String> {
     match LeagueFileKind::from_extension(s) {
         LeagueFileKind::Unknown => Err(format!("Unknown file kind: {}", s)),
         other => Ok(other),
     }
+}
+
+fn cli_styles() -> Styles {
+    Styles::styled()
+        .header(AnsiColor::Yellow.on_default().bold())
+        .usage(AnsiColor::Green.on_default().bold())
+        .literal(AnsiColor::Cyan.on_default())
+        .placeholder(AnsiColor::Magenta.on_default())
 }

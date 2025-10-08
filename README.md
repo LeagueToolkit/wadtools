@@ -51,6 +51,11 @@ wadtools --help
 wadtools <COMMAND> --help
 ```
 
+Global options:
+- `-L, --verbosity <LEVEL>`: set log verbosity (`error`, `warning`, `info`, `debug`, `trace`)
+- `--config <FILE>`: load options from a TOML file (defaults to `wadtools.toml` if present)
+- `--progress <true|false>`: show/hide progress bars (overrides config)
+
 ### Extract
 
 Extracts files from a WAD archive. Use `-i/--input` for the WAD file, `-o/--output` for the destination directory.
@@ -70,6 +75,12 @@ wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt
 # Extract only textures (DDS or TEX) under assets/
 wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
   -f dds tex -x "^assets/.*\.(dds|tex)$"
+```
+
+Configuration file example (`wadtools.toml`):
+```toml
+# Show progress bars by default (can be overridden by CLI)
+show_progress = true
 ```
 
 How filtering works:
