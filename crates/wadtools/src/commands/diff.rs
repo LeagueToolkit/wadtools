@@ -44,10 +44,11 @@ pub fn diff(args: DiffArgs) -> eyre::Result<()> {
     let target_wad_file = File::open(&args.target)?;
 
     let mut hashtable = WadHashtable::new()?;
+    if let Some(dir) = default_hashtable_dir() {
+        hashtable.add_from_dir(dir)?;
+    }
     if let Some(hashtable_path) = args.hashtable_path {
         hashtable.add_from_file(&File::open(&hashtable_path)?)?;
-    } else if let Some(dir) = default_hashtable_dir() {
-        let _ = hashtable.add_from_dir(dir);
     }
 
     let reference_wad = Wad::mount(&reference_wad_file)?;

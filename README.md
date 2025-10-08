@@ -83,6 +83,20 @@ Configuration file example (`wadtools.toml`):
 show_progress = true
 ```
 
+### Defaults: config and hashtable discovery
+
+- **Config file**:
+  - By default we look for `wadtools.toml` in the current working directory.
+  - You can point to a different file via `--config <FILE>`.
+  - Precedence: CLI flags override config. Currently `--progress=true|false` also persists back into the resolved config file.
+
+- **Hashtable files**:
+  - We always attempt to load all files found under a default directory:
+    - On Windows: `Documents/LeagueToolkit/wad_hashtables`.
+    - On other platforms: the platform data directory from `directories_next` under `io/LeagueToolkit/wadtools/wad_hashtables` (e.g., `~/.local/share/wadtools/wad_hashtables` on Linux).
+  - If `-H/--hashtable <PATH>` is provided, that file is also loaded in addition to the default directory.
+  - Files are loaded recursively from the default directory if it exists; if it does not, only the provided file (if any) is loaded.
+
 How filtering works:
 - `--pattern/-x` and `--filter-type/-f` are combined with AND semantics.
   - A chunk must match the regex AND be one of the selected types to be extracted if both flags are provided.

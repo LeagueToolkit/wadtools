@@ -28,11 +28,12 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
     let (mut decoder, chunks) = wad.decode();
 
     let mut hashtable = WadHashtable::new()?;
+    if let Some(dir) = default_hashtable_dir() {
+        hashtable.add_from_dir(dir)?;
+    }
     if let Some(hashtable_path) = args.hashtable {
         tracing::info!("loading hashtable from {}", hashtable_path);
         hashtable.add_from_file(&File::open(&hashtable_path)?)?;
-    } else if let Some(dir) = default_hashtable_dir() {
-        let _ = hashtable.add_from_dir(dir);
     }
 
     let mut extractor = Extractor::new(&mut decoder, &hashtable);
