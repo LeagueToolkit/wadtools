@@ -7,7 +7,7 @@ use colored::Colorize;
 use league_toolkit::wad::{Wad, WadChunk};
 use serde::Serialize;
 
-use crate::utils::{format_chunk_path_hash, WadHashtable};
+use crate::utils::{default_hashtable_dir, format_chunk_path_hash, WadHashtable};
 
 /// A difference between two WAD chunks
 enum ChunkDiff {
@@ -44,6 +44,9 @@ pub fn diff(args: DiffArgs) -> eyre::Result<()> {
     let target_wad_file = File::open(&args.target)?;
 
     let mut hashtable = WadHashtable::new()?;
+    if let Some(dir) = default_hashtable_dir() {
+        hashtable.add_from_dir(dir)?;
+    }
     if let Some(hashtable_path) = args.hashtable_path {
         hashtable.add_from_file(&File::open(&hashtable_path)?)?;
     }

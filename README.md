@@ -51,6 +51,11 @@ wadtools --help
 wadtools <COMMAND> --help
 ```
 
+Global options:
+- `-L, --verbosity <LEVEL>`: set log verbosity (`error`, `warning`, `info`, `debug`, `trace`)
+- `--config <FILE>`: load options from a TOML file (defaults to `wadtools.toml` if present)
+- `--progress <true|false>`: show/hide progress bars (overrides config)
+
 ### Extract
 
 Extracts files from a WAD archive. Use `-i/--input` for the WAD file, `-o/--output` for the destination directory.
@@ -71,6 +76,26 @@ wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt
 wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
   -f dds tex -x "^assets/.*\.(dds|tex)$"
 ```
+
+Configuration file example (`wadtools.toml`):
+```toml
+# Show progress bars by default (can be overridden by CLI)
+show_progress = true
+```
+
+### Defaults: config and hashtable discovery
+
+- **Config file**:
+  - By default we look for `wadtools.toml` in the current working directory.
+  - You can point to a different file via `--config <FILE>`.
+  - Precedence: CLI flags override config. Currently `--progress=true|false` also persists back into the resolved config file.
+
+- **Hashtable files**:
+  - We always attempt to load all files found under a default directory:
+    - On Windows: `Documents/LeagueToolkit/wad_hashtables`.
+    - On other platforms: the platform data directory from `directories_next` under `io/LeagueToolkit/wadtools/wad_hashtables` (e.g., `~/.local/share/wadtools/wad_hashtables` on Linux).
+  - If `-H/--hashtable <PATH>` is provided, that file is also loaded in addition to the default directory.
+  - Files are loaded recursively from the default directory if it exists; if it does not, only the provided file (if any) is loaded.
 
 How filtering works:
 - `--pattern/-x` and `--filter-type/-f` are combined with AND semantics.
@@ -111,6 +136,13 @@ Quick diff example:
 ```bash
 wadtools diff -r old.wad.client -t new.wad.client -H hashtable.txt \
   -o diff.csv
+```
+
+Show the default hashtable directory:
+```bash
+wadtools hashtable-dir
+# or
+wadtools hd
 ```
 
 ## Development

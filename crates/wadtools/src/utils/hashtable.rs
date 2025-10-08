@@ -1,9 +1,9 @@
+use camino::Utf8Path;
 use color_eyre::eyre::{self, eyre, Result};
 use std::{
     collections::HashMap,
     fs::File,
     io::{BufRead, BufReader},
-    path::Path,
     sync::Arc,
 };
 use tracing::info;
@@ -31,10 +31,11 @@ impl WadHashtable {
     }
 
     #[allow(dead_code)]
-    pub fn add_from_dir(&mut self, dir: impl AsRef<Path>) -> eyre::Result<()> {
-        info!("loading wad hasthables from dir: {:?}", dir.as_ref());
-
-        for wad_hashtable_entry in WalkDir::new(dir).into_iter().filter_map(|x| x.ok()) {
+    pub fn add_from_dir(&mut self, dir: impl AsRef<Utf8Path>) -> eyre::Result<()> {
+        for wad_hashtable_entry in WalkDir::new(dir.as_ref().as_std_path())
+            .into_iter()
+            .filter_map(|x| x.ok())
+        {
             if !wad_hashtable_entry.file_type().is_file() {
                 continue;
             }
@@ -42,7 +43,6 @@ impl WadHashtable {
             info!("loading wad hasthable: {:?}", wad_hashtable_entry.path());
             self.add_from_file(&File::open(wad_hashtable_entry.path())?)?;
         }
-        info!("loaded");
 
         Ok(())
     }

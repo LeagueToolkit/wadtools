@@ -1,6 +1,7 @@
+pub mod config;
 mod hashtable;
 
-use std::path::Path;
+use camino::{Utf8Path, Utf8PathBuf};
 
 pub use hashtable::*;
 
@@ -8,8 +9,8 @@ pub fn format_chunk_path_hash(path_hash: u64) -> String {
     format!("{:016x}", path_hash)
 }
 
-pub fn is_hex_chunk_path(path: &Path) -> bool {
-    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+pub fn is_hex_chunk_path(path: &Utf8Path) -> bool {
+    let file_name = path.file_name().unwrap_or("");
     file_name.len() == 16 && file_name.chars().all(|c| c.is_ascii_hexdigit())
 }
 
@@ -40,4 +41,26 @@ pub fn truncate_middle(input: &str, max_len: usize) -> String {
     }
     right_str = right_str.chars().rev().collect();
     format!("{}...{}", left_str, right_str)
+}
+
+/// Returns the default directory where wad hashtables should be looked up.
+/// On Windows, prefers the user's Documents folder: Documents/LeagueToolkit/wad_hashtables
+/// On other platforms, uses platform-appropriate data directory via directories_next.
+pub fn default_hashtable_dir() -> Option<Utf8PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(mut doc_dir) = dirs_next::document_dir() {
+            doc_dir.push("LeagueToolkit");
+            doc_dir.push("wad_hashtables");
+            return Utf8PathBuf::from_path_buf(doc_dir).ok();
+        }
+    }
+
+    if let Some(proj) = directories_next::ProjectDirs::from("io", "LeagueToolkit", "wadtools") {
+        let mut path = proj.data_dir().to_path_buf();
+        path.push("wad_hashtables");
+        return Utf8PathBuf::from_path_buf(path).ok();
+    }
+
+    None
 }
