@@ -5,12 +5,15 @@ use league_toolkit::{
     wad::{Wad, WadChunk},
 };
 
-use crate::{extractor::Extractor, utils::WadHashtable};
+use crate::{
+    extractor::Extractor,
+    utils::{default_hashtable_dir, WadHashtable},
+};
 use fancy_regex::Regex;
 
 pub struct ExtractArgs {
     pub input: String,
-    pub output: String,
+    pub output: Option<String>,
     pub hashtable: Option<String>,
     pub filter_type: Option<Vec<LeagueFileKind>>,
     pub pattern: Option<String>,
@@ -27,6 +30,8 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
     if let Some(hashtable_path) = args.hashtable {
         tracing::info!("loading hashtable from {}", hashtable_path);
         hashtable.add_from_file(&File::open(&hashtable_path)?)?;
+    } else if let Some(dir) = default_hashtable_dir() {
+        let _ = hashtable.add_from_dir(dir);
     }
 
     let mut extractor = Extractor::new(&mut decoder, &hashtable);
@@ -35,7 +40,22 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
     let extracted_count = get_extracted_count(chunks, &hashtable, filter_pattern.as_ref());
 
     extractor.set_filter_pattern(filter_pattern);
-    extractor.extract_chunks(chunks, &args.output, args.filter_type.as_deref())?;
+    let output_dir = match &args.output {
+        Some(path) => path.clone(),
+        None => {
+            // Construct sibling dir named after input file (without extension)
+            let input_path = std::path::Path::new(&args.input);
+            let parent = input_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."));
+            let stem = input_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("extracted");
+            parent.join(stem).to_string_lossy().to_string()
+        }
+    };
+    extractor.extract_chunks(chunks, &output_dir, args.filter_type.as_deref())?;
 
     tracing::info!("extracted {} chunks :)", extracted_count);
 

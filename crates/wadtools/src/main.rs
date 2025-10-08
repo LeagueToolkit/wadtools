@@ -80,7 +80,7 @@ pub enum Commands {
 
         /// Path to the output directory
         #[arg(short, long)]
-        output: String,
+        output: Option<String>,
 
         /// Path to the hashtable file
         #[arg(short = 'H', long, visible_short_alias = 'd')]

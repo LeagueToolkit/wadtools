@@ -1,7 +1,7 @@
 pub mod config;
 mod hashtable;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub use hashtable::*;
 
@@ -41,4 +41,26 @@ pub fn truncate_middle(input: &str, max_len: usize) -> String {
     }
     right_str = right_str.chars().rev().collect();
     format!("{}...{}", left_str, right_str)
+}
+
+/// Returns the default directory where wad hashtables should be looked up.
+/// On Windows, prefers the user's Documents folder: Documents/LeagueToolkit/wad_hashtables
+/// On other platforms, uses platform-appropriate data directory via directories_next.
+pub fn default_hashtable_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(mut doc_dir) = dirs_next::document_dir() {
+            doc_dir.push("LeagueToolkit");
+            doc_dir.push("wad_hashtables");
+            return Some(doc_dir);
+        }
+    }
+
+    if let Some(proj) = directories_next::ProjectDirs::from("io", "LeagueToolkit", "wadtools") {
+        let mut path = proj.data_dir().to_path_buf();
+        path.push("wad_hashtables");
+        return Some(path);
+    }
+
+    None
 }
