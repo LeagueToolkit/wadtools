@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions: {}
 
@@ -30,5 +31,145 @@ jobs:
         uses: release-plz/action@v0.5
         with:
           command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-plz-release:
+    name: Release-plz release
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'LeagueToolkit' }}
+    needs: release-plz-pr
+    permissions:
+      contents: write
+    concurrency:
+      group: release-plz-release-${{ github.ref }}
+      cancel-in-progress: false
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      releases: ${{ steps.release.outputs.releases }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run release-plz release
+        id: release
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-and-upload:
+    name: Build and Upload Binaries
+    needs: release-plz-release
+    if: needs.release-plz-release.outputs.releases_created == 'true'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: wadtools
+            ext: ""
+            asset_suffix: linux-x64
+            shell: bash
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: wadtools
+            ext: ""
+            asset_suffix: macos-x64
+            shell: bash
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: wadtools.exe
+            ext: .exe
+            asset_suffix: windows-x64
+            shell: powershell
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Extract release info (Unix)
+        id: release_info
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASES='${{ needs.release-plz-release.outputs.releases }}'
+          VERSION=$(echo "$RELEASES" | jq -r '.[] | select(.package_name=="wadtools") | .version')
+          TAG=$(echo "$RELEASES" | jq -r '.[] | select(.package_name=="wadtools") | .tag')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release info (Windows)
+        if: runner.os == 'Windows'
+        id: release_info_win
+        shell: powershell
+        run: |
+          $releases = '${{ needs.release-plz-release.outputs.releases }}' | ConvertFrom-Json
+          $rel = $releases | Where-Object { $_.package_name -eq 'wadtools' }
+          if (-not $rel) { Write-Error 'No wadtools release found' }
+          echo "version=$($rel.version)" >> $env:GITHUB_OUTPUT
+          echo "tag=$($rel.tag)" >> $env:GITHUB_OUTPUT
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} -p wadtools --bin wadtools
+
+      - name: Prepare and archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION='${{ steps.release_info.outputs.version }}'
+          BIN_PATH="target/${{ matrix.target }}/release/${{ matrix.artifact_name }}"
+          mkdir -p release
+          cp "$BIN_PATH" "release/wadtools${{ matrix.ext }}"
+          cp README.md LICENSE release/
+          ARCHIVE="wadtools-${VERSION}-${{ matrix.asset_suffix }}.zip"
+          (cd release && zip -r "../$ARCHIVE" .)
+          if [ "$(uname)" = "Darwin" ]; then
+            shasum -a 256 "$ARCHIVE" | awk '{print $1}' > "$ARCHIVE.sha256"
+          else
+            sha256sum "$ARCHIVE" | awk '{print $1}' > "$ARCHIVE.sha256"
+          fi
+
+      - name: Prepare and archive (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $version = '${{ steps.release_info_win.outputs.version }}'
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "release/wadtools${{ matrix.ext }}"
+          Copy-Item README.md release/
+          Copy-Item LICENSE release/
+          $archive = "wadtools-$version-${{ matrix.asset_suffix }}.zip"
+          Compress-Archive -Path release/* -DestinationPath $archive -Force
+          $hash = Get-FileHash $archive -Algorithm SHA256
+          $hash.Hash | Out-File "$archive.sha256" -Encoding ASCII
+
+      - name: Upload assets to existing release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag || steps.release_info_win.outputs.tag }}
+          files: |
+            wadtools-${{ steps.release_info.outputs.version || steps.release_info_win.outputs.version }}-${{ matrix.asset_suffix }}.zip
+            wadtools-${{ steps.release_info.outputs.version || steps.release_info_win.outputs.version }}-${{ matrix.asset_suffix }}.zip.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
