@@ -14,11 +14,30 @@ Tooling for interacting with `.wad` files. This command-line utility provides a 
 
 ## Installation
 
+### Windows (Quick Install)
+
+Run this in PowerShell (uses a default user-writable directory and updates PATH):
+
+```powershell
+irm https://raw.githubusercontent.com/LeagueToolkit/wadtools/main/scripts/install-wadtools.ps1 | iex
+```
+
+Advanced (choose a custom directory):
+
+```powershell
+# Download and run with parameters
+$tmp = Join-Path $env:TEMP 'install-wadtools.ps1'
+iwr -useb https://raw.githubusercontent.com/LeagueToolkit/wadtools/main/scripts/install-wadtools.ps1 -OutFile $tmp
+powershell -ExecutionPolicy Bypass -File $tmp -InstallDir "$env:LOCALAPPDATA\wadtools\bin"
+Remove-Item $tmp -Force
+```
+
 ### From Releases
 
 Download the latest release for your platform from the [Releases page](https://github.com/LeagueToolkit/wadtools/releases).
 
 Available binaries:
+
 - Windows (x64): `wadtools-windows.exe`
 - Linux (x64): `wadtools-linux`
 - macOS (x64): `wadtools-macos`
@@ -26,6 +45,7 @@ Available binaries:
 ### From Source
 
 To build from source, you'll need:
+
 - Rust (nightly toolchain)
 - Cargo (Rust's package manager)
 
@@ -52,6 +72,7 @@ wadtools <COMMAND> --help
 ```
 
 Global options:
+
 - `-L, --verbosity <LEVEL>`: set log verbosity (`error`, `warning`, `info`, `debug`, `trace`)
 - `--config <FILE>`: load options from a TOML file (defaults to `wadtools.toml` if present)
 - `--progress <true|false>`: show/hide progress bars (overrides config)
@@ -61,6 +82,7 @@ Global options:
 Extracts files from a WAD archive. Use `-i/--input` for the WAD file, `-o/--output` for the destination directory.
 
 Common flags:
+
 - `-i, --input <PATH>`: path to the input WAD file
 - `-o, --output <DIR>`: output directory
 - `-H, --hashtable <PATH>` (also `-d`): optional hashtable file to resolve names
@@ -68,6 +90,7 @@ Common flags:
 - `-x, --pattern <REGEX>`: filter by regex on the resolved path (see below)
 
 Basic examples:
+
 ```bash
 # Extract everything (recommended to provide a hashtable)
 wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt
@@ -78,6 +101,7 @@ wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
 ```
 
 Configuration file example (`wadtools.toml`):
+
 ```toml
 # Show progress bars by default (can be overridden by CLI)
 show_progress = true
@@ -86,6 +110,7 @@ show_progress = true
 ### Defaults: config and hashtable discovery
 
 - **Config file**:
+
   - By default we look for `wadtools.toml` in the current working directory.
   - You can point to a different file via `--config <FILE>`.
   - Precedence: CLI flags override config. Currently `--progress=true|false` also persists back into the resolved config file.
@@ -98,6 +123,7 @@ show_progress = true
   - Files are loaded recursively from the default directory if it exists; if it does not, only the provided file (if any) is loaded.
 
 How filtering works:
+
 - `--pattern/-x` and `--filter-type/-f` are combined with AND semantics.
   - A chunk must match the regex AND be one of the selected types to be extracted if both flags are provided.
 - Regex is case-insensitive by default.
@@ -105,6 +131,7 @@ How filtering works:
   - Backreferences and lookarounds are supported.
 
 Regex examples:
+
 ```bash
 # Case-insensitive (default)
 wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
@@ -116,29 +143,35 @@ wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
 ```
 
 Name resolution with hashtable:
+
 - Without a hashtable, unknown paths are written using their 16-character hex hash (e.g., `2f3c...b9a`).
 - With `-H/--hashtable`, matching hashes are resolved to readable paths before extraction.
 
 When we add the `.ltk` postfix:
+
 - We append `.ltk` if the original path has no extension or the resolved destination would collide with an existing directory (this happens for a lot of `.bin` files in `UI.wad.client` for example).
 - If we can detect the real type from file contents, we append it after `.ltk`, e.g. `foo.ltk.png`; otherwise just `foo.ltk`.
 
 Handling long filenames:
+
 - If the platform/filesystem rejects a write due to a long filename, we fall back to the chunk hash as the filename (16 hex chars) in the output directory.
 - A warning is logged including both the readable path (if known) and the hashed path so you can correlate outputs.
 
 File type filtering (`-f/--filter-type`):
+
 - Uses content detection to identify types like `png`, `tga`, `bin`, etc.
 - You can pass multiple values: `-f png tga`.
 - Remember this ANDs with `--pattern` when both are provided.
 
 Quick diff example:
+
 ```bash
 wadtools diff -r old.wad.client -t new.wad.client -H hashtable.txt \
   -o diff.csv
 ```
 
 Show the default hashtable directory:
+
 ```bash
 wadtools hashtable-dir
 # or
@@ -148,16 +181,19 @@ wadtools hd
 ## Development
 
 1. Install development tools:
+
    ```bash
    rustup component add rustfmt clippy
    ```
 
 2. Run tests:
+
    ```bash
    cargo test
    ```
 
 3. Check formatting:
+
    ```bash
    cargo fmt --all -- --check
    ```
