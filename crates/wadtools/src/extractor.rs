@@ -133,7 +133,8 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
         return Ok(());
     }
 
-    let chunk_path = resolve_final_chunk_path(&extract_directory, chunk_path, &chunk_data);
+    let chunk_path =
+        resolve_final_chunk_path(&extract_directory, chunk_path, &chunk_data, chunk_kind);
     let full_path = extract_directory.as_ref().join(&chunk_path);
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent.as_std_path())?;
@@ -144,7 +145,13 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
 
     // This will happen if the filename is too long
     if error.kind() == io::ErrorKind::InvalidFilename {
-        write_long_filename_chunk(chunk, chunk_path, extract_directory, &chunk_data)
+        write_long_filename_chunk(
+            chunk,
+            chunk_path,
+            extract_directory,
+            &chunk_data,
+            chunk_kind,
+        )
     } else {
         Err(error).wrap_err(format!(
             "failed to write chunk (chunk_path: {})",
@@ -157,11 +164,15 @@ fn resolve_final_chunk_path(
     extract_directory: impl AsRef<Utf8Path>,
     chunk_path: impl AsRef<Utf8Path>,
     chunk_data: &[u8],
+    chunk_kind: LeagueFileKind,
 ) -> Utf8PathBuf {
     let mut final_path = chunk_path.as_ref().to_path_buf();
 
-    // Hashed paths must remain exactly 16 hex characters with no extension
+    // Hashed filenames should keep the 16-hex base, but we can append a real extension
     if is_hex_chunk_path(final_path.as_path()) {
+        if let Some(ext) = chunk_kind.extension() {
+            final_path.set_extension(ext);
+        }
         return final_path;
     }
 
@@ -191,8 +202,13 @@ fn write_long_filename_chunk(
     chunk_path: impl AsRef<Utf8Path>,
     extract_directory: impl AsRef<Utf8Path>,
     chunk_data: &[u8],
+    chunk_kind: LeagueFileKind,
 ) -> eyre::Result<()> {
-    let hashed_path = format!("{:016x}", chunk.path_hash());
+    let mut hashed_path = Utf8PathBuf::from(format!("{:016x}", chunk.path_hash()));
+    if let Some(ext) = chunk_kind.extension() {
+        hashed_path.set_extension(ext);
+    }
+
     let disp = chunk_path.as_ref().as_str().to_string();
     let truncated = truncate_middle(&disp, MAX_LOG_PATH_LEN);
     tracing::warn!(
