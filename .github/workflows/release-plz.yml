@@ -28,6 +28,12 @@ jobs:
           persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+      - name: Ensure tags are fetched (and show them)
+        run: |
+          git fetch --tags --force --prune --unshallow || true
+          echo "Latest tags:"; git tag --list --sort=-creatordate | head -n 20
+          echo "v0.5.1 ->" && (git rev-parse -q --verify v0.5.1^{commit} || echo missing)
+          echo "wadtools-v0.5.1 ->" && (git rev-parse -q --verify wadtools-v0.5.1^{commit} || echo missing)
       - name: Run release-plz
         uses: release-plz/action@v0.5
         with:
@@ -57,6 +63,12 @@ jobs:
           persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+      - name: Ensure tags are fetched (and show them)
+        run: |
+          git fetch --tags --force --prune --unshallow || true
+          echo "Latest tags:"; git tag --list --sort=-creatordate | head -n 20
+          echo "v0.5.1 ->" && (git rev-parse -q --verify v0.5.1^{commit} || echo missing)
+          echo "wadtools-v0.5.1 ->" && (git rev-parse -q --verify wadtools-v0.5.1^{commit} || echo missing)
       - name: Run release-plz release
         id: release
         uses: release-plz/action@v0.5
