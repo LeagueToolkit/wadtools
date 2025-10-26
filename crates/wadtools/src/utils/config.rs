@@ -7,6 +7,8 @@ use std::fs;
 pub struct Config {
     /// Whether to show progress bars
     pub show_progress: Option<bool>,
+    /// Optional custom directory to recursively load hashtable files from
+    pub hashtable_dir: Option<String>,
 }
 
 impl Config {
@@ -19,8 +21,11 @@ impl Config {
 }
 
 pub fn default_config_path() -> Utf8PathBuf {
-    // For now, keep it alongside the binary working dir: ./wadtools.toml
-    Utf8PathBuf::from("wadtools.toml")
+    let exe_path = std::env::current_exe().unwrap();
+    let mut dir = exe_path.parent().unwrap().to_path_buf();
+    dir.push("wadtools.toml");
+
+    Utf8PathBuf::from_path_buf(dir).unwrap()
 }
 
 pub fn load_config(path: Option<&Utf8Path>) -> Result<Config> {

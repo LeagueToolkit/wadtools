@@ -66,6 +66,11 @@ struct Args {
     #[arg(long, value_name = "true|false")]
     progress: Option<bool>,
 
+    /// Optional directory to recursively load hashtable files from
+    /// Overrides the default discovery directory and config value when provided
+    #[arg(long, value_name = "DIR")]
+    hashtable_dir: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -177,6 +182,7 @@ fn main() -> eyre::Result<()> {
             hashtable,
             filter_type,
             pattern,
+            hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
         }),
         Commands::Diff {
             reference,
@@ -188,6 +194,7 @@ fn main() -> eyre::Result<()> {
             target,
             hashtable_path: hashtable,
             output,
+            hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
         }),
         Commands::HashtableDir => {
             if let Some(dir) = default_hashtable_dir() {

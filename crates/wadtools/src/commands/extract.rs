@@ -18,6 +18,7 @@ pub struct ExtractArgs {
     pub hashtable: Option<String>,
     pub filter_type: Option<Vec<LeagueFileKind>>,
     pub pattern: Option<String>,
+    pub hashtable_dir: Option<String>,
 }
 
 pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
@@ -28,7 +29,9 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
     let (mut decoder, chunks) = wad.decode();
 
     let mut hashtable = WadHashtable::new()?;
-    if let Some(dir) = default_hashtable_dir() {
+    if let Some(dir_override) = &args.hashtable_dir {
+        hashtable.add_from_dir(Utf8Path::new(dir_override))?;
+    } else if let Some(dir) = default_hashtable_dir() {
         hashtable.add_from_dir(dir)?;
     }
     if let Some(hashtable_path) = args.hashtable {

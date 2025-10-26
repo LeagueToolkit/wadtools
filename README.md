@@ -74,8 +74,9 @@ wadtools <COMMAND> --help
 Global options:
 
 - `-L, --verbosity <LEVEL>`: set log verbosity (`error`, `warning`, `info`, `debug`, `trace`)
-- `--config <FILE>`: load options from a TOML file (defaults to `wadtools.toml` if present)
+- `--config <FILE>`: load options from a TOML file (defaults to `wadtools.toml` next to the executable; created on first run)
 - `--progress <true|false>`: show/hide progress bars (overrides config)
+- `--hashtable-dir <DIR>`: recursively load hashtable files from this directory (overrides defaults and config)
 
 ### Extract
 
@@ -105,22 +106,30 @@ Configuration file example (`wadtools.toml`):
 ```toml
 # Show progress bars by default (can be overridden by CLI)
 show_progress = true
+
+# Optional custom directory where hashtable files are loaded from
+# If set, wadtools will recursively load all files in this directory on start
+# This can be overridden by the CLI flag --hashtable-dir
+hashtable_dir = "C:/Users/you/Documents/LeagueToolkit/wad_hashtables"
 ```
 
 ### Defaults: config and hashtable discovery
 
 - **Config file**:
 
-  - By default we look for `wadtools.toml` in the current working directory.
+  - By default we create and read `wadtools.toml` next to the executable, regardless of current directory.
   - You can point to a different file via `--config <FILE>`.
-  - Precedence: CLI flags override config. Currently `--progress=true|false` also persists back into the resolved config file.
+  - Precedence: CLI flags override config. `--progress=true|false` persists back into the resolved config file.
 
 - **Hashtable files**:
-  - We always attempt to load all files found under a default directory:
-    - On Windows: `Documents/LeagueToolkit/wad_hashtables`.
-    - On other platforms: the platform data directory from `directories_next` under `io/LeagueToolkit/wadtools/wad_hashtables` (e.g., `~/.local/share/wadtools/wad_hashtables` on Linux).
-  - If `-H/--hashtable <PATH>` is provided, that file is also loaded in addition to the default directory.
-  - Files are loaded recursively from the default directory if it exists; if it does not, only the provided file (if any) is loaded.
+  - We load hashtables recursively from one of the following, in order:
+    1. `--hashtable-dir <DIR>` if provided
+    2. `hashtable_dir` from `wadtools.toml` if set
+    3. Default directory:
+       - On Windows: `Documents/LeagueToolkit/wad_hashtables`.
+       - On other platforms: platform data dir from `directories_next` under `io/LeagueToolkit/wadtools/wad_hashtables`.
+  - If `-H/--hashtable <PATH>` is provided, that specific file is also loaded in addition to the directory above.
+  - If none of the directories exist, only the provided file (if any) is loaded.
 
 How filtering works:
 

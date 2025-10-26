@@ -1,3 +1,4 @@
+use camino::Utf8Path;
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek},
@@ -37,6 +38,7 @@ pub struct DiffArgs {
     pub target: String,
     pub hashtable_path: Option<String>,
     pub output: Option<String>,
+    pub hashtable_dir: Option<String>,
 }
 
 pub fn diff(args: DiffArgs) -> eyre::Result<()> {
@@ -44,7 +46,9 @@ pub fn diff(args: DiffArgs) -> eyre::Result<()> {
     let target_wad_file = File::open(&args.target)?;
 
     let mut hashtable = WadHashtable::new()?;
-    if let Some(dir) = default_hashtable_dir() {
+    if let Some(dir_override) = &args.hashtable_dir {
+        hashtable.add_from_dir(Utf8Path::new(dir_override))?;
+    } else if let Some(dir) = default_hashtable_dir() {
         hashtable.add_from_dir(dir)?;
     }
     if let Some(hashtable_path) = args.hashtable_path {
