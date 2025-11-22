@@ -4,10 +4,6 @@ git_tag_enable = true
 git_tag_name = "v{{ version }}"
 git_release_enable = true
 release_always = false
-pr_draft = true
-features_always_increment_minor = true
-
-pr_labels = ["release-plz", "release"]
 
 changelog_update = true
 changelog_path = "./CHANGELOG.md"
