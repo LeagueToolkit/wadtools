@@ -5,9 +5,6 @@ git_tag_name = "v{{ version }}"
 git_release_enable = true
 release_always = false
 
-changelog_update = true
-changelog_path = "./CHANGELOG.md"
-
 [[package]]
 name = "wadtools"
 release = true
