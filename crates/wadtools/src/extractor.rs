@@ -44,7 +44,7 @@ impl<'chunks> Extractor<'chunks> {
         chunks: &HashMap<u64, WadChunk>,
         extract_directory: impl AsRef<Utf8Path>,
         filter_type: Option<&[LeagueFileKind]>,
-    ) -> eyre::Result<()> {
+    ) -> eyre::Result<usize> {
         let total = chunks.len() as u64;
         let span = tracing::info_span!("extract", total = total);
         let _entered = span.enter();
@@ -72,9 +72,7 @@ impl<'chunks> Extractor<'chunks> {
             },
             filter_type,
             self.filter_pattern.as_ref(),
-        )?;
-
-        Ok(())
+        )
     }
 }
 
@@ -86,8 +84,9 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
     report_progress: impl Fn(f64, Option<&str>) -> eyre::Result<()>,
     filter_type: Option<&[LeagueFileKind]>,
     filter_pattern: Option<&Regex>,
-) -> eyre::Result<()> {
+) -> eyre::Result<usize> {
     let mut i = 0;
+    let mut extracted_count = 0;
     for chunk in chunks.values() {
         let chunk_path_str = wad_hashtable.resolve_path(chunk.path_hash());
         let chunk_path = Utf8Path::new(chunk_path_str.as_ref());
@@ -103,12 +102,14 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
             }
         }
 
-        extract_wad_chunk(decoder, chunk, chunk_path, &extract_directory, filter_type)?;
+        if extract_wad_chunk(decoder, chunk, chunk_path, &extract_directory, filter_type)? {
+            extracted_count += 1;
+        }
 
         i += 1;
     }
 
-    Ok(())
+    Ok(extracted_count)
 }
 
 pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
@@ -117,7 +118,7 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
     chunk_path: impl AsRef<Utf8Path>,
     extract_directory: impl AsRef<Utf8Path>,
     filter_type: Option<&[LeagueFileKind]>,
-) -> eyre::Result<()> {
+) -> eyre::Result<bool> {
     let chunk_data = decoder.load_chunk_decompressed(chunk).wrap_err(format!(
         "failed to decompress chunk (chunk_path: {})",
         chunk_path.as_ref().as_str()
@@ -130,7 +131,7 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
             chunk_path.as_ref().as_str(),
             chunk_kind
         );
-        return Ok(());
+        return Ok(false);
     }
 
     let chunk_path =
@@ -140,7 +141,7 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
         fs::create_dir_all(parent.as_std_path())?;
     }
     let Err(error) = fs::write(full_path.as_std_path(), &chunk_data) else {
-        return Ok(());
+        return Ok(true);
     };
 
     // This will happen if the filename is too long
@@ -151,7 +152,8 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
             extract_directory,
             &chunk_data,
             chunk_kind,
-        )
+        )?;
+        Ok(true)
     } else {
         Err(error).wrap_err(format!(
             "failed to write chunk (chunk_path: {})",
