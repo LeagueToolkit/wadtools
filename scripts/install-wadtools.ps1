@@ -1,9 +1,9 @@
-$ErrorActionPreference = 'Stop'
-
 param(
     [string] $InstallDir,
     [string] $Repo = 'LeagueToolkit/wadtools'
 )
+
+$ErrorActionPreference = 'Stop'
 
 function Write-Info {
     param([string] $Message)
