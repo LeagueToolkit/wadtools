@@ -3,6 +3,9 @@ use clap::builder::{styling::AnsiColor, Styles};
 use clap::error::ErrorKind;
 use clap::{Parser, Subcommand, ValueEnum};
 use league_toolkit::file::LeagueFileKind;
+use serde::de::value::Error;
+use serde::de::IntoDeserializer;
+use serde::Deserialize;
 use tracing::Level;
 use tracing_indicatif::IndicatifLayer;
 use tracing_subscriber::filter::LevelFilter;
@@ -81,8 +84,8 @@ pub enum Commands {
     #[command(visible_alias = "e")]
     Extract {
         /// Path to the input wad file
-        #[arg(short, long)]
-        input: String,
+        #[arg(short, long, required_unless_present = "list_filters")]
+        input: Option<String>,
 
         /// Path to the output directory
         #[arg(short, long)]
@@ -102,6 +105,10 @@ pub enum Commands {
         )]
         filter_type: Option<Vec<LeagueFileKind>>,
 
+        /// List available filter types
+        #[arg(long, visible_alias = "lf")]
+        list_filters: bool,
+
         /// Only extract chunks whose resolved path matches this regex
         #[arg(
             short = 'x',
@@ -116,7 +123,7 @@ pub enum Commands {
     /// This command compares two wad files and prints the differences between them.
     /// Using the reference wad file, it will print the differences between the target wad file.
     ///
-    #[command(visible_alias = "d")]
+    /// #[command(visible_alias = "d")]
     Diff {
         /// Path to the reference wad file
         #[arg(short, long)]
@@ -176,14 +183,22 @@ fn main() -> eyre::Result<()> {
             hashtable,
             filter_type,
             pattern,
-        } => extract(ExtractArgs {
-            input,
-            output,
-            hashtable,
-            filter_type,
-            pattern,
-            hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
-        }),
+            list_filters,
+        } => {
+            if list_filters {
+                print_supported_filters();
+                return Ok(());
+            }
+            let input = input.ok_or_else(|| eyre::eyre!("Input file is required"))?;
+            extract(ExtractArgs {
+                input,
+                output,
+                hashtable,
+                filter_type,
+                pattern,
+                hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
+            })
+        }
         Commands::Diff {
             reference,
             target,
@@ -273,6 +288,12 @@ fn initialize_tracing(verbosity: VerbosityLevel, show_progress: bool) -> eyre::R
 }
 
 fn parse_filter_type(s: &str) -> Result<LeagueFileKind, String> {
+    let deserializer: serde::de::value::StrDeserializer<Error> = s.into_deserializer();
+    if let Ok(kind) = LeagueFileKind::deserialize(deserializer) {
+        return Ok(kind);
+    }
+
+    // Fallback to extension
     match LeagueFileKind::from_extension(s) {
         LeagueFileKind::Unknown => Err(format!("Unknown file kind: {}", s)),
         other => Ok(other),

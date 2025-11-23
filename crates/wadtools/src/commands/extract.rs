@@ -1,15 +1,14 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use std::{collections::HashMap, fs::File};
+use color_eyre::owo_colors::OwoColorize;
+use std::fs::File;
 
-use league_toolkit::{
-    file::LeagueFileKind,
-    wad::{Wad, WadChunk},
-};
+use league_toolkit::{file::LeagueFileKind, wad::Wad};
 
 use crate::{
     extractor::Extractor,
     utils::{default_hashtable_dir, WadHashtable},
 };
+use convert_case::{Case, Casing};
 use fancy_regex::Regex;
 
 pub struct ExtractArgs {
@@ -42,7 +41,6 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
     let mut extractor = Extractor::new(&mut decoder, &hashtable);
 
     let filter_pattern = create_filter_pattern(args.pattern)?;
-    let extracted_count = get_extracted_count(chunks, &hashtable, filter_pattern.as_ref());
 
     extractor.set_filter_pattern(filter_pattern);
     let output_dir: Utf8PathBuf = match &args.output {
@@ -55,11 +53,26 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
             parent.join(stem)
         }
     };
-    extractor.extract_chunks(chunks, &output_dir, args.filter_type.as_deref())?;
+    let extracted_count =
+        extractor.extract_chunks(chunks, &output_dir, args.filter_type.as_deref())?;
 
     tracing::info!("extracted {} chunks :)", extracted_count);
 
     Ok(())
+}
+
+pub fn print_supported_filters() {
+    println!("Supported filter types (name -> description [extension]):");
+    for kind in LeagueFileKind::iter().collect::<Vec<_>>() {
+        let ext = kind.extension().unwrap_or("");
+        let snake = format!("{:?}", kind).to_case(Case::Snake);
+        println!(
+            "  {:24} -> {:?} [{}]",
+            snake.bright_yellow().bold(),
+            kind,
+            ext.bright_green().bold()
+        );
+    }
 }
 
 fn create_filter_pattern(pattern: Option<String>) -> eyre::Result<Option<Regex>> {
@@ -73,22 +86,5 @@ fn create_filter_pattern(pattern: Option<String>) -> eyre::Result<Option<Regex>>
             Ok(Some(Regex::new(&p)?))
         }
         None => Ok(None),
-    }
-}
-
-fn get_extracted_count(
-    chunks: &HashMap<u64, WadChunk>,
-    hashtable: &WadHashtable,
-    filter_pattern: Option<&Regex>,
-) -> usize {
-    match filter_pattern {
-        Some(re) => chunks
-            .values()
-            .filter(|chunk| {
-                re.is_match(hashtable.resolve_path(chunk.path_hash()).as_ref())
-                    .unwrap_or(false)
-            })
-            .count(),
-        None => chunks.len(),
     }
 }
