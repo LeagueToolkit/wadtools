@@ -144,6 +144,47 @@ pub enum Commands {
     /// Print the default hashtable directory
     #[command(visible_alias = "hd")]
     HashtableDir,
+    /// List the contents of a wad file
+    ///
+    /// Lists all chunks in a WAD file with their metadata including
+    /// file paths, sizes, compression ratios, and detected file types.
+    #[command(visible_alias = "ls")]
+    List {
+        /// Path to the input wad file
+        #[arg(short, long)]
+        input: String,
+
+        /// Path to the hashtable file
+        #[arg(short = 'H', long, visible_short_alias = 'd')]
+        hashtable: Option<String>,
+
+        #[arg(
+            short = 'f',
+            long,
+            value_name = "FILTER_MAGIC",
+            help = "Filter files by magic (e.g., 'png', 'bin'). You can pass multiple values at once.",
+            value_parser = parse_filter_type,
+            num_args = 1..
+        )]
+        filter_type: Option<Vec<LeagueFileKind>>,
+
+        /// Only list chunks whose resolved path matches this regex
+        #[arg(
+            short = 'x',
+            long,
+            value_name = "REGEX",
+            help = "Only list chunks whose resolved path matches this regex (case-insensitive by default; use (?-i) to disable)"
+        )]
+        pattern: Option<String>,
+
+        /// Output format
+        #[arg(short = 'F', long, value_enum, default_value_t = ListOutputFormat::Table)]
+        format: ListOutputFormat,
+
+        /// Show summary statistics
+        #[arg(short = 's', long, default_value_t = true)]
+        stats: bool,
+    },
 }
 
 fn main() -> eyre::Result<()> {
@@ -219,6 +260,22 @@ fn main() -> eyre::Result<()> {
             }
             Ok(())
         }
+        Commands::List {
+            input,
+            hashtable,
+            filter_type,
+            pattern,
+            format,
+            stats,
+        } => list(ListArgs {
+            input,
+            hashtable,
+            hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
+            filter_type,
+            pattern,
+            format,
+            show_stats: stats,
+        }),
     }
 }
 

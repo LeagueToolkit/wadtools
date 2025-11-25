@@ -2,8 +2,25 @@ pub mod config;
 mod hashtable;
 
 use camino::{Utf8Path, Utf8PathBuf};
+use fancy_regex::Regex;
 
 pub use hashtable::*;
+
+/// Creates a filter pattern from an optional regex string.
+/// Defaults to case-insensitive matching unless the user explicitly sets (?i) or (?-i).
+pub fn create_filter_pattern(pattern: Option<String>) -> eyre::Result<Option<Regex>> {
+    match pattern {
+        Some(mut p) => {
+            // Default to case-insensitive unless the user explicitly sets (?i) or (?-i)
+            let has_inline_flag = p.contains("(?i)") || p.contains("(?-i)");
+            if !has_inline_flag {
+                p = format!("(?i){p}");
+            }
+            Ok(Some(Regex::new(&p)?))
+        }
+        None => Ok(None),
+    }
+}
 
 pub fn format_chunk_path_hash(path_hash: u64) -> String {
     format!("{:016x}", path_hash)
