@@ -1,11 +1,12 @@
 use camino::Utf8Path;
 use color_eyre::owo_colors::OwoColorize;
-use fancy_regex::Regex;
 use league_toolkit::{file::LeagueFileKind, wad::Wad};
 use serde::Serialize;
 use std::fs::File;
 
-use crate::utils::{default_hashtable_dir, format_chunk_path_hash, WadHashtable};
+use crate::utils::{
+    create_filter_pattern, default_hashtable_dir, format_chunk_path_hash, WadHashtable,
+};
 
 #[derive(Debug, Clone, Copy, Default, clap::ValueEnum)]
 pub enum ListOutputFormat {
@@ -247,19 +248,5 @@ fn format_size(bytes: u64) -> String {
         format!("{:.2} KB", bytes as f64 / KB as f64)
     } else {
         format!("{} B", bytes)
-    }
-}
-
-fn create_filter_pattern(pattern: Option<String>) -> eyre::Result<Option<Regex>> {
-    match pattern {
-        Some(mut p) => {
-            // Default to case-insensitive unless the user explicitly sets (?i) or (?-i)
-            let has_inline_flag = p.contains("(?i)") || p.contains("(?-i)");
-            if !has_inline_flag {
-                p = format!("(?i){p}");
-            }
-            Ok(Some(Regex::new(&p)?))
-        }
-        None => Ok(None),
     }
 }
