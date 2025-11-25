@@ -9,8 +9,8 @@ Tooling for interacting with `.wad` files. This command-line utility provides a 
 ## Features
 
 - **Extract**: Extract contents from WAD files
+- **List**: Browse WAD file contents without extracting
 - **Diff**: Compare WAD files and show differences
-- More features coming soon!
 
 ## Installation
 
@@ -172,12 +172,61 @@ File type filtering (`-f/--filter-type`):
 - You can pass multiple values: `-f png tga`.
 - Remember this ANDs with `--pattern` when both are provided.
 
-Quick diff example:
+### List
+
+Lists all chunks in a WAD file with metadata. Use `-i/--input` for the WAD file. Alias: `ls`.
+
+Common flags:
+
+- `-i, --input <PATH>`: path to the input WAD file
+- `-H, --hashtable <PATH>` (also `-d`): optional hashtable file to resolve names
+- `-f, --filter-type <TYPE...>`: filter by file type(s) like `png`, `bin`, `dds`
+- `-x, --pattern <REGEX>`: filter by regex on the resolved path
+- `-F, --format <FORMAT>`: output format (`table`, `json`, `csv`, `flat`)
+- `-s, --stats`: show summary statistics (default: true)
+
+Basic examples:
+
+```bash
+# List all files in a WAD with a nice table view
+wadtools list -i Aatrox.wad.client
+wadtools ls -i Aatrox.wad.client  # using alias
+
+# List only texture files
+wadtools ls -i Aatrox.wad.client -f dds png tex
+
+# Search for specific files using regex
+wadtools ls -i Aatrox.wad.client -x "data/.*\.bin$"
+
+# Export file list as JSON for scripting
+wadtools ls -i Aatrox.wad.client -F json > files.json
+
+# Export as CSV for spreadsheets
+wadtools ls -i Aatrox.wad.client -F csv > files.csv
+
+# Get just file paths (great for piping)
+wadtools ls -i Aatrox.wad.client -F flat | grep "\.png$"
+```
+
+Output formats:
+
+- `table` (default): colored table with compressed/uncompressed sizes, compression ratio, and file types
+- `json`: structured JSON with full metadata
+- `csv`: spreadsheet-friendly format
+- `flat`: plain list of paths only, one per line
+
+### Diff
+
+Compares two WAD files and shows differences.
+
+Quick example:
 
 ```bash
 wadtools diff -r old.wad.client -t new.wad.client -H hashtable.txt \
   -o diff.csv
 ```
+
+### Hashtable Directory
 
 Show the default hashtable directory:
 
