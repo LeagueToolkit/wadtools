@@ -185,6 +185,11 @@ pub enum Commands {
         #[arg(short = 's', long, default_value_t = true)]
         stats: bool,
     },
+    /// Download/update WAD hashtables from CommunityDragon
+    ///
+    /// Downloads hashes.game.txt and hashes.lcu.txt to the configured hashtable directory.
+    #[command(visible_alias = "dl")]
+    DownloadHashes,
 }
 
 fn main() -> eyre::Result<()> {
@@ -275,6 +280,9 @@ fn main() -> eyre::Result<()> {
             pattern,
             format,
             show_stats: stats,
+        }),
+        Commands::DownloadHashes => download_hashes(DownloadHashesArgs {
+            hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
         }),
     }
 }
