@@ -150,6 +150,14 @@ where
         }
     }
 
+    // Sort diffs by path_hash to ensure deterministic output regardless of HashMap iteration order
+    diffs.sort_by_key(|diff| match diff {
+        ChunkDiff::New(chunk) => chunk.path_hash,
+        ChunkDiff::Removed(chunk) => chunk.path_hash,
+        ChunkDiff::Modified { old, .. } => old.path_hash,
+        ChunkDiff::Renamed { old, .. } => old.path_hash,
+    });
+
     diffs
 }
 
