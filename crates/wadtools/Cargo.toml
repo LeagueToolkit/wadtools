@@ -8,7 +8,7 @@ clap = { version = "4.5.20", features = ["derive"] }
 eyre = "0.6.12"
 toml = "0.8.19"
 fancy-regex = "0.16.2"
-league-toolkit = { version = "0.2.4", features = ["serde"] }
+league-toolkit = { version = "0.2.15", features = ["serde"] }
 color-eyre = "0.6"
 tracing = "0.1.41"
 parking_lot = "0.12.3"
