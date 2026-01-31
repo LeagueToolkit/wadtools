@@ -4,8 +4,9 @@ use league_toolkit::{file::LeagueFileKind, wad::Wad};
 use serde::Serialize;
 use std::fs::File;
 
-use crate::utils::{
-    create_filter_pattern, default_hashtable_dir, format_chunk_path_hash, WadHashtable,
+use crate::{
+    extractor::{should_skip_pattern, should_skip_type},
+    utils::{create_filter_pattern, default_hashtable_dir, format_chunk_path_hash, WadHashtable},
 };
 
 #[derive(Debug, Clone, Copy, Default, clap::ValueEnum)]
@@ -27,6 +28,7 @@ pub struct ListArgs {
     pub hashtable_dir: Option<String>,
     pub filter_type: Option<Vec<LeagueFileKind>>,
     pub pattern: Option<String>,
+    pub filter_invert: bool,
     pub format: ListOutputFormat,
     pub show_stats: bool,
 }
@@ -80,10 +82,12 @@ pub fn list(args: ListArgs) -> eyre::Result<()> {
         let path_str = hashtable.resolve_path(chunk.path_hash);
 
         // Apply pattern filter
-        if let Some(ref regex) = filter_pattern {
-            if !regex.is_match(path_str.as_ref()).unwrap_or(false) {
-                continue;
-            }
+        if should_skip_pattern(
+            path_str.as_ref(),
+            filter_pattern.as_ref(),
+            args.filter_invert,
+        ) {
+            continue;
         }
 
         // Detect file type from extension or guess from path
@@ -92,10 +96,8 @@ pub fn list(args: ListArgs) -> eyre::Result<()> {
         );
 
         // Apply type filter
-        if let Some(ref filter_types) = args.filter_type {
-            if !filter_types.contains(&file_type) {
-                continue;
-            }
+        if should_skip_type(file_type, args.filter_type.as_deref(), args.filter_invert) {
+            continue;
         }
 
         let compressed = chunk.compressed_size;

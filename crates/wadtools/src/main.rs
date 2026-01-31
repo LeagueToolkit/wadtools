@@ -117,6 +117,10 @@ pub enum Commands {
             help = "Only extract chunks whose resolved path matches this regex (case-insensitive by default; use (?-i) to disable)"
         )]
         pattern: Option<String>,
+
+        /// Invert the -f and -x filters (exclude matching files instead of including them)
+        #[arg(short = 'v', long = "filter-invert")]
+        filter_invert: bool,
     },
     /// Compare two wad files
     ///
@@ -177,6 +181,10 @@ pub enum Commands {
         )]
         pattern: Option<String>,
 
+        /// Invert the -f and -x filters (exclude matching files instead of including them)
+        #[arg(short = 'v', long = "filter-invert")]
+        filter_invert: bool,
+
         /// Output format
         #[arg(short = 'F', long, value_enum, default_value_t = ListOutputFormat::Table)]
         format: ListOutputFormat,
@@ -229,6 +237,7 @@ fn main() -> eyre::Result<()> {
             hashtable,
             filter_type,
             pattern,
+            filter_invert,
             list_filters,
         } => {
             if list_filters {
@@ -247,6 +256,7 @@ fn main() -> eyre::Result<()> {
                     hashtable: hashtable.clone(),
                     filter_type: filter_type.clone(),
                     pattern: pattern.clone(),
+                    filter_invert,
                     hashtable_dir: hashtable_dir.clone(),
                 })?;
             }
@@ -277,6 +287,7 @@ fn main() -> eyre::Result<()> {
             hashtable,
             filter_type,
             pattern,
+            filter_invert,
             format,
             stats,
         } => {
@@ -292,6 +303,7 @@ fn main() -> eyre::Result<()> {
                     hashtable_dir: hashtable_dir.clone(),
                     filter_type: filter_type.clone(),
                     pattern: pattern.clone(),
+                    filter_invert,
                     format,
                     show_stats: stats,
                 })?;

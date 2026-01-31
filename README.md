@@ -89,6 +89,7 @@ Common flags:
 - `-H, --hashtable <PATH>` (also `-d`): optional hashtable file to resolve names
 - `-f, --filter-type <TYPE...>`: filter by file type(s) like `png`, `tga`, `bin`
 - `-x, --pattern <REGEX>`: filter by regex on the resolved path (see below)
+- `-v, --filter-invert`: invert `-f` and `-x` filters (exclude matching files instead of including them)
 
 Basic examples:
 
@@ -105,6 +106,10 @@ wadtools extract -i "Aatrox.wad.client;Ahri.wad.client" -o out -H hashes.game.tx
 # Extract only textures (DDS or TEX) under assets/
 wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
   -f dds tex -x "^assets/.*\.(dds|tex)$"
+
+# Extract everything EXCEPT dds/tex files (inverted filter)
+wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
+  -f dds tex -v
 ```
 
 Configuration file example (`wadtools.toml`):
@@ -141,6 +146,10 @@ How filtering works:
 
 - `--pattern/-x` and `--filter-type/-f` are combined with AND semantics.
   - A chunk must match the regex AND be one of the selected types to be extracted if both flags are provided.
+- `--filter-invert/-v` inverts **both** `-f` and `-x` filters. Matching chunks are excluded instead of included.
+  - `-f dds tex -v` extracts all files **except** DDS and TEX files.
+  - `-x "\.bin$" -v` extracts all files **except** those ending in `.bin`.
+  - When combined, `-f dds -x "^assets/" -v` excludes DDS files under `assets/`.
 - Regex is case-insensitive by default.
   - To opt out, prefix the pattern with `(?-i)`.
   - Backreferences and lookarounds are supported.
@@ -188,6 +197,7 @@ Common flags:
 - `-H, --hashtable <PATH>` (also `-d`): optional hashtable file to resolve names
 - `-f, --filter-type <TYPE...>`: filter by file type(s) like `png`, `bin`, `dds`
 - `-x, --pattern <REGEX>`: filter by regex on the resolved path
+- `-v, --filter-invert`: invert `-f` and `-x` filters (exclude matching files instead of including them)
 - `-F, --format <FORMAT>`: output format (`table`, `json`, `csv`, `flat`)
 - `-s, --stats`: show summary statistics (default: true)
 

@@ -16,6 +16,7 @@ pub struct ExtractArgs {
     pub hashtable: Option<String>,
     pub filter_type: Option<Vec<LeagueFileKind>>,
     pub pattern: Option<String>,
+    pub filter_invert: bool,
     pub hashtable_dir: Option<String>,
 }
 
@@ -42,6 +43,7 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
     let filter_pattern = create_filter_pattern(args.pattern)?;
 
     extractor.set_filter_pattern(filter_pattern);
+    extractor.set_filter_invert(args.filter_invert);
     let output_dir: Utf8PathBuf = match &args.output {
         Some(path) => Utf8PathBuf::from(path.as_str()),
         None => {
