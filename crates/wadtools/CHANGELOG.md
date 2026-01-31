@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.4](https://github.com/LeagueToolkit/wadtools/compare/v0.5.3...v0.5.4) - 2026-01-31
+
+### Added
+
+- add filter inversion support to extract and list commands
+- support multiple input WAD files in extract and list commands
+- add hashtable download command
+
+### Fixed
+
+- sort diffs by path_hash
+
+### Other
+
+- update league-toolkit to 0.2.15
+
 ## [0.5.3](https://github.com/LeagueToolkit/wadtools/releases/tag/v0.5.3) - 2025-11-25
 
 ### Added
