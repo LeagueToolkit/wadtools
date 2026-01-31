@@ -21,6 +21,7 @@ pub struct Extractor<'chunks> {
     decoder: &'chunks mut WadDecoder<'chunks, &'chunks File>,
     hashtable: &'chunks WadHashtable,
     filter_pattern: Option<Regex>,
+    filter_invert: bool,
 }
 
 impl<'chunks> Extractor<'chunks> {
@@ -32,11 +33,16 @@ impl<'chunks> Extractor<'chunks> {
             decoder,
             hashtable,
             filter_pattern: None,
+            filter_invert: false,
         }
     }
 
     pub fn set_filter_pattern(&mut self, filter_pattern: Option<Regex>) {
         self.filter_pattern = filter_pattern;
+    }
+
+    pub fn set_filter_invert(&mut self, filter_invert: bool) {
+        self.filter_invert = filter_invert;
     }
 
     pub fn extract_chunks(
@@ -72,6 +78,7 @@ impl<'chunks> Extractor<'chunks> {
             },
             filter_type,
             self.filter_pattern.as_ref(),
+            self.filter_invert,
         )
     }
 }
@@ -84,6 +91,7 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
     report_progress: impl Fn(f64, Option<&str>) -> eyre::Result<()>,
     filter_type: Option<&[LeagueFileKind]>,
     filter_pattern: Option<&Regex>,
+    filter_invert: bool,
 ) -> eyre::Result<usize> {
     let mut i = 0;
     let mut extracted_count = 0;
@@ -95,14 +103,19 @@ pub fn extract_wad_chunks<TSource: Read + Seek>(
         let truncated = truncate_middle(chunk_path_str.as_ref(), MAX_LOG_PATH_LEN);
         report_progress(i as f64 / chunks.len() as f64, Some(truncated.as_str()))?;
 
-        if let Some(regex) = filter_pattern {
-            if !regex.is_match(chunk_path_str.as_ref()).unwrap_or(false) {
-                i += 1;
-                continue;
-            }
+        if should_skip_pattern(chunk_path_str.as_ref(), filter_pattern, filter_invert) {
+            i += 1;
+            continue;
         }
 
-        if extract_wad_chunk(decoder, chunk, chunk_path, &extract_directory, filter_type)? {
+        if extract_wad_chunk(
+            decoder,
+            chunk,
+            chunk_path,
+            &extract_directory,
+            filter_type,
+            filter_invert,
+        )? {
             extracted_count += 1;
         }
 
@@ -118,6 +131,7 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
     chunk_path: impl AsRef<Utf8Path>,
     extract_directory: impl AsRef<Utf8Path>,
     filter_type: Option<&[LeagueFileKind]>,
+    filter_invert: bool,
 ) -> eyre::Result<bool> {
     let chunk_data = decoder.load_chunk_decompressed(chunk).wrap_err(format!(
         "failed to decompress chunk (chunk_path: {})",
@@ -125,7 +139,7 @@ pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
     ))?;
 
     let chunk_kind = LeagueFileKind::identify_from_bytes(&chunk_data);
-    if filter_type.is_some_and(|filter| !filter.contains(&chunk_kind)) {
+    if should_skip_type(chunk_kind, filter_type, filter_invert) {
         tracing::debug!(
             "skipping chunk (chunk_path: {}, chunk_kind: {:?})",
             chunk_path.as_ref().as_str(),
@@ -199,6 +213,28 @@ fn build_ltk_name(file_stem: &str, chunk_data: &[u8]) -> String {
     }
 }
 
+/// Returns true if the chunk should be skipped based on the pattern filter.
+pub(crate) fn should_skip_pattern(
+    path: &str,
+    filter_pattern: Option<&Regex>,
+    filter_invert: bool,
+) -> bool {
+    if let Some(regex) = filter_pattern {
+        let matched = regex.is_match(path).unwrap_or(false);
+        return matched == filter_invert;
+    }
+    false
+}
+
+/// Returns true if the chunk should be skipped based on the type filter.
+pub(crate) fn should_skip_type(
+    chunk_kind: LeagueFileKind,
+    filter_type: Option<&[LeagueFileKind]>,
+    filter_invert: bool,
+) -> bool {
+    filter_type.is_some_and(|filter| filter.contains(&chunk_kind) == filter_invert)
+}
+
 fn write_long_filename_chunk(
     chunk: &WadChunk,
     chunk_path: impl AsRef<Utf8Path>,
@@ -225,4 +261,77 @@ fn write_long_filename_chunk(
     )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn regex(pattern: &str) -> Regex {
+        Regex::new(pattern).unwrap()
+    }
+
+    // --- should_skip_pattern tests ---
+
+    #[test]
+    fn no_pattern_never_skips() {
+        assert!(!should_skip_pattern("anything.dds", None, false));
+        assert!(!should_skip_pattern("anything.dds", None, true));
+    }
+
+    #[test]
+    fn pattern_includes_matching() {
+        let re = regex(r"(?i)\.dds$");
+        assert!(!should_skip_pattern("textures/foo.dds", Some(&re), false));
+    }
+
+    #[test]
+    fn pattern_excludes_non_matching() {
+        let re = regex(r"(?i)\.dds$");
+        assert!(should_skip_pattern("sounds/bar.wav", Some(&re), false));
+    }
+
+    #[test]
+    fn pattern_inverted_excludes_matching() {
+        let re = regex(r"(?i)\.dds$");
+        assert!(should_skip_pattern("textures/foo.dds", Some(&re), true));
+    }
+
+    #[test]
+    fn pattern_inverted_includes_non_matching() {
+        let re = regex(r"(?i)\.dds$");
+        assert!(!should_skip_pattern("sounds/bar.wav", Some(&re), true));
+    }
+
+    // --- should_skip_type tests ---
+
+    #[test]
+    fn no_type_filter_never_skips() {
+        assert!(!should_skip_type(LeagueFileKind::Png, None, false));
+        assert!(!should_skip_type(LeagueFileKind::Png, None, true));
+    }
+
+    #[test]
+    fn type_filter_includes_matching() {
+        let types = [LeagueFileKind::Png];
+        assert!(!should_skip_type(LeagueFileKind::Png, Some(&types), false));
+    }
+
+    #[test]
+    fn type_filter_excludes_non_matching() {
+        let types = [LeagueFileKind::Png];
+        assert!(should_skip_type(LeagueFileKind::Jpeg, Some(&types), false));
+    }
+
+    #[test]
+    fn type_filter_inverted_excludes_matching() {
+        let types = [LeagueFileKind::Png];
+        assert!(should_skip_type(LeagueFileKind::Png, Some(&types), true));
+    }
+
+    #[test]
+    fn type_filter_inverted_includes_non_matching() {
+        let types = [LeagueFileKind::Png];
+        assert!(!should_skip_type(LeagueFileKind::Jpeg, Some(&types), true));
+    }
 }
