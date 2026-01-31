@@ -84,7 +84,7 @@ Extracts files from a WAD archive. Use `-i/--input` for the WAD file, `-o/--outp
 
 Common flags:
 
-- `-i, --input <PATH>`: path to the input WAD file
+- `-i, --input <PATH>...`: path(s) to input WAD file(s) — supports repeated flags or semicolon-delimited paths
 - `-o, --output <DIR>`: output directory
 - `-H, --hashtable <PATH>` (also `-d`): optional hashtable file to resolve names
 - `-f, --filter-type <TYPE...>`: filter by file type(s) like `png`, `tga`, `bin`
@@ -95,6 +95,12 @@ Basic examples:
 ```bash
 # Extract everything (recommended to provide a hashtable)
 wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt
+
+# Extract from multiple WAD files (repeated -i)
+wadtools extract -i Aatrox.wad.client -i Ahri.wad.client -o out -H hashes.game.txt
+
+# Extract from multiple WAD files (semicolon-delimited)
+wadtools extract -i "Aatrox.wad.client;Ahri.wad.client" -o out -H hashes.game.txt
 
 # Extract only textures (DDS or TEX) under assets/
 wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
@@ -178,7 +184,7 @@ Lists all chunks in a WAD file with metadata. Use `-i/--input` for the WAD file.
 
 Common flags:
 
-- `-i, --input <PATH>`: path to the input WAD file
+- `-i, --input <PATH>...`: path(s) to input WAD file(s) — supports repeated flags or semicolon-delimited paths
 - `-H, --hashtable <PATH>` (also `-d`): optional hashtable file to resolve names
 - `-f, --filter-type <TYPE...>`: filter by file type(s) like `png`, `bin`, `dds`
 - `-x, --pattern <REGEX>`: filter by regex on the resolved path
@@ -191,6 +197,9 @@ Basic examples:
 # List all files in a WAD with a nice table view
 wadtools list -i Aatrox.wad.client
 wadtools ls -i Aatrox.wad.client  # using alias
+
+# List files from multiple WADs
+wadtools ls -i Aatrox.wad.client -i Ahri.wad.client
 
 # List only texture files
 wadtools ls -i Aatrox.wad.client -f dds png tex

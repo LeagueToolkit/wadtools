@@ -14,7 +14,7 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{filter, fmt};
 use utils::config::{default_config_path, load_or_create_config, resolve_and_persist_progress};
-use utils::default_hashtable_dir;
+use utils::{default_hashtable_dir, resolve_inputs};
 
 mod commands;
 mod extractor;
@@ -83,9 +83,9 @@ pub enum Commands {
     /// Extract the contents of a wad file
     #[command(visible_alias = "e")]
     Extract {
-        /// Path to the input wad file
-        #[arg(short, long, required_unless_present = "list_filters")]
-        input: Option<String>,
+        /// Path(s) to input wad file(s). Supports repeated -i flags or semicolon-delimited paths
+        #[arg(short, long, num_args = 1.., required_unless_present = "list_filters")]
+        input: Vec<String>,
 
         /// Path to the output directory
         #[arg(short, long)]
@@ -150,9 +150,9 @@ pub enum Commands {
     /// file paths, sizes, compression ratios, and detected file types.
     #[command(visible_alias = "ls")]
     List {
-        /// Path to the input wad file
-        #[arg(short, long)]
-        input: String,
+        /// Path(s) to input wad file(s). Supports repeated -i flags, semicolon-delimited paths, or a listfile.
+        #[arg(short, long, num_args = 1..)]
+        input: Vec<String>,
 
         /// Path to the hashtable file
         #[arg(short = 'H', long, visible_short_alias = 'd')]
@@ -235,15 +235,22 @@ fn main() -> eyre::Result<()> {
                 print_supported_filters();
                 return Ok(());
             }
-            let input = input.ok_or_else(|| eyre::eyre!("Input file is required"))?;
-            extract(ExtractArgs {
-                input,
-                output,
-                hashtable,
-                filter_type,
-                pattern,
-                hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
-            })
+            let resolved = resolve_inputs(&input);
+            if resolved.is_empty() {
+                return Err(eyre::eyre!("No input files provided"));
+            }
+            let hashtable_dir = args.hashtable_dir.or_else(|| config.hashtable_dir.clone());
+            for path in resolved {
+                extract(ExtractArgs {
+                    input: path,
+                    output: output.clone(),
+                    hashtable: hashtable.clone(),
+                    filter_type: filter_type.clone(),
+                    pattern: pattern.clone(),
+                    hashtable_dir: hashtable_dir.clone(),
+                })?;
+            }
+            Ok(())
         }
         Commands::Diff {
             reference,
@@ -272,15 +279,25 @@ fn main() -> eyre::Result<()> {
             pattern,
             format,
             stats,
-        } => list(ListArgs {
-            input,
-            hashtable,
-            hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
-            filter_type,
-            pattern,
-            format,
-            show_stats: stats,
-        }),
+        } => {
+            let resolved = resolve_inputs(&input);
+            if resolved.is_empty() {
+                return Err(eyre::eyre!("No input files provided"));
+            }
+            let hashtable_dir = args.hashtable_dir.or_else(|| config.hashtable_dir.clone());
+            for path in resolved {
+                list(ListArgs {
+                    input: path,
+                    hashtable: hashtable.clone(),
+                    hashtable_dir: hashtable_dir.clone(),
+                    filter_type: filter_type.clone(),
+                    pattern: pattern.clone(),
+                    format,
+                    show_stats: stats,
+                })?;
+            }
+            Ok(())
+        }
         Commands::DownloadHashes => download_hashes(DownloadHashesArgs {
             hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
         }),

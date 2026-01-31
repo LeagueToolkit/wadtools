@@ -6,6 +6,17 @@ use fancy_regex::Regex;
 
 pub use hashtable::*;
 
+/// Resolves a list of input strings into a flat list of WAD file paths.
+/// Splits any semicolon-delimited entries and flattens the result.
+pub fn resolve_inputs(inputs: &[String]) -> Vec<String> {
+    inputs
+        .iter()
+        .flat_map(|entry| entry.split(';'))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 /// Creates a filter pattern from an optional regex string.
 /// Defaults to case-insensitive matching unless the user explicitly sets (?i) or (?-i).
 pub fn create_filter_pattern(pattern: Option<String>) -> eyre::Result<Option<Regex>> {
@@ -80,4 +91,64 @@ pub fn default_hashtable_dir() -> Option<Utf8PathBuf> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn single_input() {
+        assert_eq!(resolve_inputs(&s(&["a.wad.client"])), vec!["a.wad.client"]);
+    }
+
+    #[test]
+    fn repeated_inputs() {
+        assert_eq!(
+            resolve_inputs(&s(&["a.wad", "b.wad"])),
+            vec!["a.wad", "b.wad"]
+        );
+    }
+
+    #[test]
+    fn semicolon_delimited() {
+        assert_eq!(
+            resolve_inputs(&s(&["a.wad;b.wad;c.wad"])),
+            vec!["a.wad", "b.wad", "c.wad"]
+        );
+    }
+
+    #[test]
+    fn semicolon_with_whitespace() {
+        assert_eq!(
+            resolve_inputs(&s(&["a.wad ; b.wad"])),
+            vec!["a.wad", "b.wad"]
+        );
+    }
+
+    #[test]
+    fn semicolon_skips_empty() {
+        assert_eq!(
+            resolve_inputs(&s(&["a.wad;;b.wad;"])),
+            vec!["a.wad", "b.wad"]
+        );
+    }
+
+    #[test]
+    fn mixed_repeated_and_semicolon() {
+        assert_eq!(
+            resolve_inputs(&s(&["a.wad;b.wad", "c.wad"])),
+            vec!["a.wad", "b.wad", "c.wad"]
+        );
+    }
+
+    #[test]
+    fn empty_input() {
+        let result = resolve_inputs(&s(&[]));
+        assert!(result.is_empty());
+    }
 }
