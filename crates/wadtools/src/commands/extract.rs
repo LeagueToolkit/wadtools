@@ -16,6 +16,7 @@ pub struct ExtractArgs {
     pub filter_type: Option<Vec<LeagueFileKind>>,
     pub pattern: Option<String>,
     pub filter_invert: bool,
+    pub overwrite: bool,
 }
 
 pub fn extract(args: ExtractArgs, hashtable: &WadHashtable) -> eyre::Result<()> {
@@ -39,9 +40,18 @@ pub fn extract(args: ExtractArgs, hashtable: &WadHashtable) -> eyre::Result<()> 
             parent.join(stem)
         }
     };
-    let extracted_count = extractor.extract_chunks(&output_dir, args.filter_type.as_deref())?;
+    let (extracted_count, skipped_existing) =
+        extractor.extract_chunks(&output_dir, args.filter_type.as_deref(), args.overwrite)?;
 
-    tracing::info!("extracted {} chunks :)", extracted_count);
+    if skipped_existing > 0 {
+        tracing::info!(
+            "extracted {} chunks, skipped {} existing :)",
+            extracted_count,
+            skipped_existing
+        );
+    } else {
+        tracing::info!("extracted {} chunks :)", extracted_count);
+    }
 
     Ok(())
 }

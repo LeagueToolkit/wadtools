@@ -90,6 +90,7 @@ Common flags:
 - `-f, --filter-type <TYPE...>`: filter by file type(s) like `png`, `tga`, `bin`
 - `-x, --pattern <REGEX>`: filter by regex on the resolved path (see below)
 - `-v, --filter-invert`: invert `-f` and `-x` filters (exclude matching files instead of including them)
+- `--overwrite`: overwrite existing files (default: skip existing)
 
 Basic examples:
 
@@ -110,6 +111,12 @@ wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
 # Extract everything EXCEPT dds/tex files (inverted filter)
 wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt \
   -f dds tex -v
+
+# Re-extract, skipping files that already exist (default behavior)
+wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt
+
+# Re-extract, overwriting all existing files
+wadtools extract -i Aatrox.wad.client -o out -H hashes.game.txt --overwrite
 ```
 
 Configuration file example (`wadtools.toml`):
