@@ -130,6 +130,10 @@ pub enum Commands {
         /// Overwrite existing files (default: skip existing)
         #[arg(long)]
         overwrite: bool,
+
+        /// Show summary statistics after extraction: true/false (default: true). Example: --stats=false
+        #[arg(short = 's', long, value_name = "true|false", default_missing_value = "true", num_args = 0..=1, default_value_t = true)]
+        stats: bool,
     },
     /// Compare two wad files
     ///
@@ -254,6 +258,7 @@ fn main() -> eyre::Result<()> {
             filter_invert,
             list_filters,
             overwrite,
+            stats,
         } => {
             if list_filters {
                 print_supported_filters();
@@ -276,6 +281,7 @@ fn main() -> eyre::Result<()> {
                         hash: hash_filter.clone(),
                         filter_invert,
                         overwrite,
+                        show_stats: stats,
                     },
                     &ht,
                 )?;
