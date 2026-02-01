@@ -55,8 +55,8 @@ pub fn diff(args: DiffArgs) -> eyre::Result<()> {
         hashtable.add_from_file(&File::open(&hashtable_path)?)?;
     }
 
-    let reference_wad = Wad::mount(&reference_wad_file)?;
-    let target_wad = Wad::mount(&target_wad_file)?;
+    let reference_wad = Wad::mount(reference_wad_file)?;
+    let target_wad = Wad::mount(target_wad_file)?;
 
     tracing::info!("Collecting diffs...");
     let diffs = collect_diffs(&reference_wad, &target_wad);
@@ -109,8 +109,8 @@ where
 {
     let mut diffs = Vec::<ChunkDiff>::new();
 
-    for (reference_chunk_hash, reference_chunk) in reference_wad.chunks() {
-        let target_chunk = target_wad.chunks().get(reference_chunk_hash);
+    for reference_chunk in reference_wad.chunks() {
+        let target_chunk = target_wad.chunks().get(reference_chunk.path_hash);
 
         // If the chunk is not present in the target wad, it is a removed chunk
         if target_chunk.is_none() {
@@ -128,15 +128,15 @@ where
         }
     }
 
-    for (target_chunk_hash, target_chunk) in target_wad.chunks() {
-        let reference_chunk = reference_wad.chunks().get(target_chunk_hash);
+    for target_chunk in target_wad.chunks() {
+        let reference_chunk = reference_wad.chunks().get(target_chunk.path_hash);
 
         // If the chunk is not present in the reference wad, it is either a new chunk or a renamed chunk
         if reference_chunk.is_none() {
             // We can check if the chunk is renamed, by finding a chunk in the reference wad with the same checksum
             let renamed_chunk = reference_wad
                 .chunks()
-                .values()
+                .iter()
                 .find(|chunk| chunk.checksum == target_chunk.checksum);
 
             if let Some(renamed_chunk) = renamed_chunk {

@@ -6,39 +6,24 @@ use league_toolkit::{file::LeagueFileKind, wad::Wad};
 
 use crate::{
     extractor::Extractor,
-    utils::{create_filter_pattern, default_hashtable_dir, WadHashtable},
+    utils::{create_filter_pattern, WadHashtable},
 };
 use convert_case::{Case, Casing};
 
 pub struct ExtractArgs {
     pub input: String,
     pub output: Option<String>,
-    pub hashtable: Option<String>,
     pub filter_type: Option<Vec<LeagueFileKind>>,
     pub pattern: Option<String>,
     pub filter_invert: bool,
-    pub hashtable_dir: Option<String>,
 }
 
-pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
+pub fn extract(args: ExtractArgs, hashtable: &WadHashtable) -> eyre::Result<()> {
     let source = File::open(&args.input)?;
 
-    let mut wad = Wad::mount(&source)?;
+    let mut wad = Wad::mount(source)?;
 
-    let (mut decoder, chunks) = wad.decode();
-
-    let mut hashtable = WadHashtable::new()?;
-    if let Some(dir_override) = &args.hashtable_dir {
-        hashtable.add_from_dir(Utf8Path::new(dir_override))?;
-    } else if let Some(dir) = default_hashtable_dir() {
-        hashtable.add_from_dir(dir)?;
-    }
-    if let Some(hashtable_path) = args.hashtable {
-        tracing::info!("loading hashtable from {}", hashtable_path);
-        hashtable.add_from_file(&File::open(&hashtable_path)?)?;
-    }
-
-    let mut extractor = Extractor::new(&mut decoder, &hashtable);
+    let mut extractor = Extractor::new(&mut wad, hashtable);
 
     let filter_pattern = create_filter_pattern(args.pattern)?;
 
@@ -54,8 +39,7 @@ pub fn extract(args: ExtractArgs) -> eyre::Result<()> {
             parent.join(stem)
         }
     };
-    let extracted_count =
-        extractor.extract_chunks(chunks, &output_dir, args.filter_type.as_deref())?;
+    let extracted_count = extractor.extract_chunks(&output_dir, args.filter_type.as_deref())?;
 
     tracing::info!("extracted {} chunks :)", extracted_count);
 
