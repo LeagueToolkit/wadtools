@@ -6,7 +6,7 @@ use league_toolkit::{file::LeagueFileKind, wad::Wad};
 
 use crate::{
     extractor::Extractor,
-    utils::{create_filter_pattern, WadHashtable},
+    utils::{create_filter_pattern, format_size, WadHashtable},
 };
 use convert_case::{Case, Casing};
 
@@ -18,6 +18,7 @@ pub struct ExtractArgs {
     pub hash: Option<Vec<u64>>,
     pub filter_invert: bool,
     pub overwrite: bool,
+    pub show_stats: bool,
 }
 
 pub fn extract(args: ExtractArgs, hashtable: &WadHashtable) -> eyre::Result<()> {
@@ -42,17 +43,51 @@ pub fn extract(args: ExtractArgs, hashtable: &WadHashtable) -> eyre::Result<()> 
             parent.join(stem)
         }
     };
-    let (extracted_count, skipped_existing) =
+    let stats =
         extractor.extract_chunks(&output_dir, args.filter_type.as_deref(), args.overwrite)?;
 
-    if skipped_existing > 0 {
-        tracing::info!(
-            "extracted {} chunks, skipped {} existing :)",
-            extracted_count,
-            skipped_existing
+    if args.show_stats {
+        println!();
+        println!(
+            "{}: {}",
+            "WAD".bright_cyan().bold(),
+            args.input.bright_white()
         );
+        println!(
+            "{}: {} chunks ({})",
+            "Extracted".bright_cyan().bold(),
+            stats.extracted_count.to_string().bright_green(),
+            format_size(stats.bytes_written).bright_white()
+        );
+        println!(
+            "{}: {} existing",
+            "Skipped".bright_cyan().bold(),
+            stats.skipped_existing.to_string().bright_yellow()
+        );
+        if !stats.by_type.is_empty() {
+            println!();
+            println!("{}:", "By type".bright_cyan().bold());
+            let mut type_entries: Vec<_> = stats.by_type.iter().collect();
+            type_entries.sort_by(|a, b| b.1.cmp(a.1));
+            for (kind, count) in type_entries {
+                let name = format!("{:?}", kind).to_case(Case::Snake);
+                println!(
+                    "  {:24} {}",
+                    name.bright_magenta(),
+                    count.to_string().bright_white()
+                );
+            }
+        }
     } else {
-        tracing::info!("extracted {} chunks :)", extracted_count);
+        if stats.skipped_existing > 0 {
+            tracing::info!(
+                "extracted {} chunks, skipped {} existing :)",
+                stats.extracted_count,
+                stats.skipped_existing
+            );
+        } else {
+            tracing::info!("extracted {} chunks :)", stats.extracted_count);
+        }
     }
 
     Ok(())

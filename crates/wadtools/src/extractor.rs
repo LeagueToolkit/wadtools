@@ -1,6 +1,7 @@
 use crate::utils::{is_hex_chunk_path, truncate_middle, WadHashtable};
 use camino::{Utf8Path, Utf8PathBuf};
 use color_eyre::eyre::{self, Ok};
+use dashmap::DashMap;
 use eyre::Context;
 use fancy_regex::Regex;
 use league_toolkit::{
@@ -8,10 +9,11 @@ use league_toolkit::{
     wad::{decompress_raw, Wad, WadChunk},
 };
 use std::{
+    collections::HashMap,
     fs::{self, File, OpenOptions},
     io::{self, Write},
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
         mpsc,
     },
 };
@@ -20,8 +22,15 @@ use tracing_indicatif::style::ProgressStyle;
 
 const MAX_LOG_PATH_LEN: usize = 120;
 
+pub struct ExtractStats {
+    pub extracted_count: usize,
+    pub skipped_existing: usize,
+    pub bytes_written: u64,
+    pub by_type: HashMap<LeagueFileKind, usize>,
+}
+
 enum ChunkResult {
-    Extracted,
+    Extracted(LeagueFileKind, u64),
     SkippedFilter,
     SkippedExisting,
 }
@@ -62,7 +71,7 @@ impl<'a> Extractor<'a> {
         extract_directory: impl AsRef<Utf8Path>,
         filter_type: Option<&[LeagueFileKind]>,
         overwrite: bool,
-    ) -> eyre::Result<(usize, usize)> {
+    ) -> eyre::Result<ExtractStats> {
         let extract_directory = extract_directory.as_ref().to_path_buf();
 
         let chunks: Vec<WadChunk> = self.wad.chunks().iter().copied().collect();
@@ -85,6 +94,8 @@ impl<'a> Extractor<'a> {
         let counter = AtomicUsize::new(0);
         let extracted_counter = AtomicUsize::new(0);
         let skipped_existing_counter = AtomicUsize::new(0);
+        let bytes_written_counter = AtomicU64::new(0);
+        let by_type: DashMap<LeagueFileKind, usize> = DashMap::new();
         let filter_invert = self.filter_invert;
         let extract_dir = &extract_directory;
         let err_holder: std::sync::Mutex<Option<eyre::Report>> = std::sync::Mutex::new(None);
@@ -97,6 +108,8 @@ impl<'a> Extractor<'a> {
                         let counter = &counter;
                         let extracted_counter = &extracted_counter;
                         let skipped_existing_counter = &skipped_existing_counter;
+                        let bytes_written_counter = &bytes_written_counter;
+                        let by_type = &by_type;
                         let err_holder = &err_holder;
                         let progress_span = &span;
 
@@ -112,8 +125,10 @@ impl<'a> Extractor<'a> {
                             );
 
                             match result {
-                                std::result::Result::Ok(ChunkResult::Extracted) => {
+                                std::result::Result::Ok(ChunkResult::Extracted(kind, size)) => {
                                     extracted_counter.fetch_add(1, Ordering::Relaxed);
+                                    bytes_written_counter.fetch_add(size, Ordering::Relaxed);
+                                    *by_type.entry(kind).or_insert(0) += 1;
                                 }
                                 std::result::Result::Ok(ChunkResult::SkippedExisting) => {
                                     skipped_existing_counter.fetch_add(1, Ordering::Relaxed);
@@ -185,10 +200,14 @@ impl<'a> Extractor<'a> {
             return Err(err);
         }
 
-        Ok((
-            extracted_counter.load(Ordering::Relaxed),
-            skipped_existing_counter.load(Ordering::Relaxed),
-        ))
+        let by_type_map: HashMap<LeagueFileKind, usize> = by_type.into_iter().collect();
+
+        Ok(ExtractStats {
+            extracted_count: extracted_counter.load(Ordering::Relaxed),
+            skipped_existing: skipped_existing_counter.load(Ordering::Relaxed),
+            bytes_written: bytes_written_counter.load(Ordering::Relaxed),
+            by_type: by_type_map,
+        })
     }
 }
 
@@ -220,8 +239,14 @@ fn process_chunk(
         fs::create_dir_all(parent.as_std_path())?;
     }
 
+    let size = chunk_data.len() as u64;
     match write_chunk_file(full_path.as_std_path(), &chunk_data, overwrite) {
-        std::result::Result::Ok(result) => return Ok(result),
+        std::result::Result::Ok(ChunkWriteResult::Written) => {
+            return Ok(ChunkResult::Extracted(chunk_kind, size));
+        }
+        std::result::Result::Ok(ChunkWriteResult::SkippedExisting) => {
+            return Ok(ChunkResult::SkippedExisting);
+        }
         Err(error) if error.kind() == io::ErrorKind::InvalidFilename => {
             return write_long_filename_chunk(
                 chunk,
@@ -241,6 +266,11 @@ fn process_chunk(
     }
 }
 
+enum ChunkWriteResult {
+    Written,
+    SkippedExisting,
+}
+
 /// Writes chunk data to a file. When `overwrite` is false, uses `create_new(true)` for an
 /// atomic existence check, returning `SkippedExisting` on `AlreadyExists`. This avoids the
 /// TOCTOU race of a separate exists() check followed by write().
@@ -248,20 +278,20 @@ fn write_chunk_file(
     path: &std::path::Path,
     data: &[u8],
     overwrite: bool,
-) -> io::Result<ChunkResult> {
+) -> io::Result<ChunkWriteResult> {
     if overwrite {
         fs::write(path, data)?;
-        return std::result::Result::Ok(ChunkResult::Extracted);
+        return std::result::Result::Ok(ChunkWriteResult::Written);
     }
 
     match OpenOptions::new().write(true).create_new(true).open(path) {
         std::result::Result::Ok(mut file) => {
             file.write_all(data)?;
-            std::result::Result::Ok(ChunkResult::Extracted)
+            std::result::Result::Ok(ChunkWriteResult::Written)
         }
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
             tracing::debug!("skipping existing file: {}", path.display());
-            std::result::Result::Ok(ChunkResult::SkippedExisting)
+            std::result::Result::Ok(ChunkWriteResult::SkippedExisting)
         }
         Err(e) => Err(e),
     }
@@ -358,11 +388,11 @@ fn write_long_filename_chunk(
         &hashed_path
     );
 
-    Ok(write_chunk_file(
-        full_path.as_std_path(),
-        chunk_data,
-        overwrite,
-    )?)
+    let size = chunk_data.len() as u64;
+    match write_chunk_file(full_path.as_std_path(), chunk_data, overwrite)? {
+        ChunkWriteResult::Written => Ok(ChunkResult::Extracted(chunk_kind, size)),
+        ChunkWriteResult::SkippedExisting => Ok(ChunkResult::SkippedExisting),
+    }
 }
 
 #[cfg(test)]
