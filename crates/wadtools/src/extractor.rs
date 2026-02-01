@@ -5,32 +5,32 @@ use eyre::Context;
 use fancy_regex::Regex;
 use league_toolkit::{
     file::LeagueFileKind,
-    wad::{WadChunk, WadDecoder},
+    wad::{decompress_raw, Wad, WadChunk},
 };
 use std::{
-    collections::HashMap,
     fs::{self, File},
-    io::{self, Read, Seek},
+    io,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    },
 };
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use tracing_indicatif::style::ProgressStyle;
 
 const MAX_LOG_PATH_LEN: usize = 120;
 
-pub struct Extractor<'chunks> {
-    decoder: &'chunks mut WadDecoder<'chunks, &'chunks File>,
-    hashtable: &'chunks WadHashtable,
+pub struct Extractor<'a> {
+    wad: &'a mut Wad<File>,
+    hashtable: &'a WadHashtable,
     filter_pattern: Option<Regex>,
     filter_invert: bool,
 }
 
-impl<'chunks> Extractor<'chunks> {
-    pub fn new(
-        decoder: &'chunks mut WadDecoder<'chunks, &'chunks File>,
-        hashtable: &'chunks WadHashtable,
-    ) -> Self {
+impl<'a> Extractor<'a> {
+    pub fn new(wad: &'a mut Wad<File>, hashtable: &'a WadHashtable) -> Self {
         Self {
-            decoder,
+            wad,
             hashtable,
             filter_pattern: None,
             filter_invert: false,
@@ -47,11 +47,14 @@ impl<'chunks> Extractor<'chunks> {
 
     pub fn extract_chunks(
         &mut self,
-        chunks: &HashMap<u64, WadChunk>,
         extract_directory: impl AsRef<Utf8Path>,
         filter_type: Option<&[LeagueFileKind]>,
     ) -> eyre::Result<usize> {
+        let extract_directory = extract_directory.as_ref().to_path_buf();
+
+        let chunks: Vec<WadChunk> = self.wad.chunks().iter().copied().collect();
         let total = chunks.len() as u64;
+
         let span = tracing::info_span!("extract", total = total);
         let _entered = span.enter();
         span.pb_set_style(
@@ -60,120 +63,143 @@ impl<'chunks> Extractor<'chunks> {
         );
         span.pb_set_length(total);
         span.pb_set_message("Extracting chunks");
-        span.pb_set_finish_message("Extraction complete");
 
-        extract_wad_chunks(
-            self.decoder,
-            chunks,
-            self.hashtable,
-            extract_directory.as_ref().to_path_buf(),
-            |progress, message| {
-                // progress is 0.0..1.0; convert to absolute position
-                let position = (progress * total as f64).round() as u64;
-                span.pb_set_position(position);
-                if let Some(msg) = message {
-                    span.pb_set_message(msg);
+        // Bounded channel: caps in-flight raw chunks to limit memory usage.
+        // The sequential reader blocks when the channel is full (workers are busy).
+        let buffer_size = rayon::current_num_threads().max(1);
+        let (tx, rx) = mpsc::sync_channel::<(WadChunk, String, Box<[u8]>)>(buffer_size);
+
+        let counter = AtomicUsize::new(0);
+        let extracted_counter = AtomicUsize::new(0);
+        let filter_invert = self.filter_invert;
+        let extract_dir = &extract_directory;
+        let err_holder: std::sync::Mutex<Option<eyre::Report>> = std::sync::Mutex::new(None);
+
+        std::thread::scope(|s| -> eyre::Result<()> {
+            // Worker thread: receive chunks and decompress+write in parallel via rayon::scope
+            let worker = s.spawn(|| {
+                rayon::scope(|rayon_scope| {
+                    for (chunk, path_str, raw) in rx {
+                        let counter = &counter;
+                        let extracted_counter = &extracted_counter;
+                        let err_holder = &err_holder;
+                        let progress_span = &span;
+
+                        rayon_scope.spawn(move |_| {
+                            let result = process_chunk(
+                                &chunk,
+                                &path_str,
+                                &raw,
+                                extract_dir,
+                                filter_type,
+                                filter_invert,
+                            );
+
+                            match result {
+                                std::result::Result::Ok(true) => {
+                                    extracted_counter.fetch_add(1, Ordering::Relaxed);
+                                }
+                                std::result::Result::Ok(false) => {}
+                                Err(e) => {
+                                    let mut guard = err_holder.lock().unwrap();
+                                    if guard.is_none() {
+                                        *guard = Some(e);
+                                    }
+                                }
+                            }
+
+                            let done = counter.fetch_add(1, Ordering::Relaxed) + 1;
+                            progress_span.pb_set_position(done as u64);
+                        });
+                    }
+                });
+                // rayon::scope blocks until all spawned tasks complete
+            });
+
+            // Sequential reader: read raw bytes and send through bounded channel
+            for chunk in chunks.iter() {
+                if err_holder.lock().unwrap().is_some() {
+                    break;
                 }
-                Ok(())
-            },
-            filter_type,
-            self.filter_pattern.as_ref(),
-            self.filter_invert,
-        )
+
+                let chunk_path_str = self.hashtable.resolve_path(chunk.path_hash);
+
+                span.pb_set_message(&truncate_middle(chunk_path_str.as_ref(), MAX_LOG_PATH_LEN));
+
+                if should_skip_pattern(
+                    chunk_path_str.as_ref(),
+                    self.filter_pattern.as_ref(),
+                    self.filter_invert,
+                ) {
+                    let done = counter.fetch_add(1, Ordering::Relaxed) + 1;
+                    span.pb_set_position(done as u64);
+                    continue;
+                }
+
+                let raw = self.wad.load_chunk_raw(chunk).wrap_err(format!(
+                    "failed to read raw chunk (chunk_path: {})",
+                    chunk_path_str.as_ref()
+                ))?;
+
+                // Blocks if the channel is full, bounding memory
+                let _ = tx.send((*chunk, chunk_path_str.to_string(), raw));
+            }
+
+            drop(tx);
+            worker.join().unwrap();
+
+            Ok(())
+        })?;
+
+        if let Some(err) = err_holder.into_inner().unwrap() {
+            return Err(err);
+        }
+
+        Ok(extracted_counter.load(Ordering::Relaxed))
     }
 }
 
-pub fn extract_wad_chunks<TSource: Read + Seek>(
-    decoder: &mut WadDecoder<TSource>,
-    chunks: &HashMap<u64, WadChunk>,
-    wad_hashtable: &WadHashtable,
-    extract_directory: Utf8PathBuf,
-    report_progress: impl Fn(f64, Option<&str>) -> eyre::Result<()>,
-    filter_type: Option<&[LeagueFileKind]>,
-    filter_pattern: Option<&Regex>,
-    filter_invert: bool,
-) -> eyre::Result<usize> {
-    let mut i = 0;
-    let mut extracted_count = 0;
-    for chunk in chunks.values() {
-        let chunk_path_str = wad_hashtable.resolve_path(chunk.path_hash());
-        let chunk_path = Utf8Path::new(chunk_path_str.as_ref());
-
-        // advance progress for every chunk (including ones we skip)
-        let truncated = truncate_middle(chunk_path_str.as_ref(), MAX_LOG_PATH_LEN);
-        report_progress(i as f64 / chunks.len() as f64, Some(truncated.as_str()))?;
-
-        if should_skip_pattern(chunk_path_str.as_ref(), filter_pattern, filter_invert) {
-            i += 1;
-            continue;
-        }
-
-        if extract_wad_chunk(
-            decoder,
-            chunk,
-            chunk_path,
-            &extract_directory,
-            filter_type,
-            filter_invert,
-        )? {
-            extracted_count += 1;
-        }
-
-        i += 1;
-    }
-
-    Ok(extracted_count)
-}
-
-pub fn extract_wad_chunk<'wad, TSource: Read + Seek>(
-    decoder: &mut WadDecoder<'wad, TSource>,
+fn process_chunk(
     chunk: &WadChunk,
-    chunk_path: impl AsRef<Utf8Path>,
-    extract_directory: impl AsRef<Utf8Path>,
+    path_str: &str,
+    raw: &[u8],
+    extract_dir: &Utf8Path,
     filter_type: Option<&[LeagueFileKind]>,
     filter_invert: bool,
 ) -> eyre::Result<bool> {
-    let chunk_data = decoder.load_chunk_decompressed(chunk).wrap_err(format!(
-        "failed to decompress chunk (chunk_path: {})",
-        chunk_path.as_ref().as_str()
-    ))?;
+    let chunk_data = decompress_raw(raw, chunk.compression_type, chunk.uncompressed_size)
+        .wrap_err(format!(
+            "failed to decompress chunk (chunk_path: {})",
+            path_str
+        ))?;
 
     let chunk_kind = LeagueFileKind::identify_from_bytes(&chunk_data);
     if should_skip_type(chunk_kind, filter_type, filter_invert) {
-        tracing::debug!(
-            "skipping chunk (chunk_path: {}, chunk_kind: {:?})",
-            chunk_path.as_ref().as_str(),
-            chunk_kind
-        );
         return Ok(false);
     }
 
-    let chunk_path =
-        resolve_final_chunk_path(&extract_directory, chunk_path, &chunk_data, chunk_kind);
-    let full_path = extract_directory.as_ref().join(&chunk_path);
+    let chunk_path = Utf8Path::new(path_str);
+    let final_path = resolve_final_chunk_path(extract_dir, chunk_path, &chunk_data, chunk_kind);
+    let full_path = extract_dir.join(&final_path);
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent.as_std_path())?;
     }
-    let Err(error) = fs::write(full_path.as_std_path(), &chunk_data) else {
-        return Ok(true);
-    };
 
-    // This will happen if the filename is too long
-    if error.kind() == io::ErrorKind::InvalidFilename {
-        write_long_filename_chunk(
-            chunk,
-            chunk_path,
-            extract_directory,
-            &chunk_data,
-            chunk_kind,
-        )?;
-        Ok(true)
-    } else {
-        Err(error).wrap_err(format!(
-            "failed to write chunk (chunk_path: {})",
-            truncate_middle(full_path.as_str(), MAX_LOG_PATH_LEN)
-        ))
+    let write_result = fs::write(full_path.as_std_path(), &chunk_data);
+    match write_result {
+        std::result::Result::Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::InvalidFilename => {
+            write_long_filename_chunk(chunk, final_path, extract_dir, &chunk_data, chunk_kind)?;
+        }
+        Err(error) => {
+            return Err(error).wrap_err(format!(
+                "failed to write chunk (chunk_path: {})",
+                truncate_middle(full_path.as_str(), MAX_LOG_PATH_LEN)
+            ));
+        }
     }
+
+    Ok(true)
 }
 
 fn resolve_final_chunk_path(
@@ -242,7 +268,7 @@ fn write_long_filename_chunk(
     chunk_data: &[u8],
     chunk_kind: LeagueFileKind,
 ) -> eyre::Result<()> {
-    let mut hashed_path = Utf8PathBuf::from(format!("{:016x}", chunk.path_hash()));
+    let mut hashed_path = Utf8PathBuf::from(format!("{:016x}", chunk.path_hash));
     if let Some(ext) = chunk_kind.extension() {
         hashed_path.set_extension(ext);
     }

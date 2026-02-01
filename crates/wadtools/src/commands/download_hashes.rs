@@ -1,17 +1,10 @@
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
 use eyre::{eyre, Result};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 
 use crate::utils::default_hashtable_dir;
-
-/// Format a path as a clickable hyperlink using OSC 8 escape sequences.
-/// Supported by modern terminals like Windows Terminal, iTerm2, VS Code terminal, etc.
-fn hyperlink_path(path: &Utf8PathBuf) -> String {
-    let url = format!("file://{}", path.as_str().replace('\\', "/"));
-    format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, path)
-}
 
 const HASH_FILES: &[(&str, &str)] = &[
     (
@@ -39,16 +32,13 @@ pub fn download_hashes(args: DownloadHashesArgs) -> Result<()> {
 
     fs::create_dir_all(target_dir.as_std_path())?;
 
-    tracing::info!("Downloading hashtables to {}", hyperlink_path(&target_dir));
+    tracing::info!("Downloading hashtables to {}", &target_dir);
 
     for (filename, url) in HASH_FILES {
         download_file_with_progress(url, filename, &target_dir)?;
     }
 
-    tracing::info!(
-        "Successfully downloaded all hashtables to {}",
-        hyperlink_path(&target_dir)
-    );
+    tracing::info!("Successfully downloaded all hashtables to {}", &target_dir);
     Ok(())
 }
 
@@ -104,10 +94,6 @@ fn download_file_with_progress(
         span.pb_set_position(downloaded);
     }
 
-    tracing::info!(
-        "Saved {} ({} bytes)",
-        hyperlink_path(&target_path),
-        downloaded
-    );
+    tracing::info!("Saved {} ({} bytes)", &target_path, downloaded);
     Ok(())
 }

@@ -6,6 +6,7 @@ use league_toolkit::file::LeagueFileKind;
 use serde::de::value::Error;
 use serde::de::IntoDeserializer;
 use serde::Deserialize;
+use std::fs::File;
 use tracing::Level;
 use tracing_indicatif::IndicatifLayer;
 use tracing_subscriber::filter::LevelFilter;
@@ -14,7 +15,7 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{filter, fmt};
 use utils::config::{default_config_path, load_or_create_config, resolve_and_persist_progress};
-use utils::{default_hashtable_dir, resolve_inputs};
+use utils::{default_hashtable_dir, resolve_inputs, WadHashtable};
 
 mod commands;
 mod extractor;
@@ -249,16 +250,18 @@ fn main() -> eyre::Result<()> {
                 return Err(eyre::eyre!("No input files provided"));
             }
             let hashtable_dir = args.hashtable_dir.or_else(|| config.hashtable_dir.clone());
+            let ht = load_hashtable(hashtable_dir.as_deref(), hashtable.as_deref())?;
             for path in resolved {
-                extract(ExtractArgs {
-                    input: path,
-                    output: output.clone(),
-                    hashtable: hashtable.clone(),
-                    filter_type: filter_type.clone(),
-                    pattern: pattern.clone(),
-                    filter_invert,
-                    hashtable_dir: hashtable_dir.clone(),
-                })?;
+                extract(
+                    ExtractArgs {
+                        input: path,
+                        output: output.clone(),
+                        filter_type: filter_type.clone(),
+                        pattern: pattern.clone(),
+                        filter_invert,
+                    },
+                    &ht,
+                )?;
             }
             Ok(())
         }
@@ -296,17 +299,19 @@ fn main() -> eyre::Result<()> {
                 return Err(eyre::eyre!("No input files provided"));
             }
             let hashtable_dir = args.hashtable_dir.or_else(|| config.hashtable_dir.clone());
+            let ht = load_hashtable(hashtable_dir.as_deref(), hashtable.as_deref())?;
             for path in resolved {
-                list(ListArgs {
-                    input: path,
-                    hashtable: hashtable.clone(),
-                    hashtable_dir: hashtable_dir.clone(),
-                    filter_type: filter_type.clone(),
-                    pattern: pattern.clone(),
-                    filter_invert,
-                    format,
-                    show_stats: stats,
-                })?;
+                list(
+                    ListArgs {
+                        input: path,
+                        filter_type: filter_type.clone(),
+                        pattern: pattern.clone(),
+                        filter_invert,
+                        format,
+                        show_stats: stats,
+                    },
+                    &ht,
+                )?;
             }
             Ok(())
         }
@@ -314,6 +319,23 @@ fn main() -> eyre::Result<()> {
             hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
         }),
     }
+}
+
+fn load_hashtable(
+    hashtable_dir: Option<&str>,
+    hashtable_file: Option<&str>,
+) -> eyre::Result<WadHashtable> {
+    let mut hashtable = WadHashtable::new()?;
+    if let Some(dir_override) = hashtable_dir {
+        hashtable.add_from_dir(Utf8Path::new(dir_override))?;
+    } else if let Some(dir) = default_hashtable_dir() {
+        hashtable.add_from_dir(dir)?;
+    }
+    if let Some(path) = hashtable_file {
+        tracing::info!("loading hashtable from {}", path);
+        hashtable.add_from_file(&File::open(path)?)?;
+    }
+    Ok(hashtable)
 }
 
 fn initialize_tracing(verbosity: VerbosityLevel, show_progress: bool) -> eyre::Result<()> {

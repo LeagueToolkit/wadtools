@@ -6,7 +6,7 @@ use std::fs::File;
 
 use crate::{
     extractor::{should_skip_pattern, should_skip_type},
-    utils::{create_filter_pattern, default_hashtable_dir, format_chunk_path_hash, WadHashtable},
+    utils::{create_filter_pattern, format_chunk_path_hash, WadHashtable},
 };
 
 #[derive(Debug, Clone, Copy, Default, clap::ValueEnum)]
@@ -24,8 +24,6 @@ pub enum ListOutputFormat {
 
 pub struct ListArgs {
     pub input: String,
-    pub hashtable: Option<String>,
-    pub hashtable_dir: Option<String>,
     pub filter_type: Option<Vec<LeagueFileKind>>,
     pub pattern: Option<String>,
     pub filter_invert: bool,
@@ -54,21 +52,9 @@ struct ListOutput {
     chunks: Vec<ChunkInfo>,
 }
 
-pub fn list(args: ListArgs) -> eyre::Result<()> {
+pub fn list(args: ListArgs, hashtable: &WadHashtable) -> eyre::Result<()> {
     let source = File::open(&args.input)?;
-    let wad = Wad::mount(&source)?;
-
-    // Load hashtables
-    let mut hashtable = WadHashtable::new()?;
-    if let Some(dir_override) = &args.hashtable_dir {
-        hashtable.add_from_dir(Utf8Path::new(dir_override))?;
-    } else if let Some(dir) = default_hashtable_dir() {
-        hashtable.add_from_dir(dir)?;
-    }
-    if let Some(hashtable_path) = &args.hashtable {
-        tracing::info!("loading hashtable from {}", hashtable_path);
-        hashtable.add_from_file(&File::open(hashtable_path)?)?;
-    }
+    let wad = Wad::mount(source)?;
 
     // Build filter pattern
     let filter_pattern = create_filter_pattern(args.pattern)?;
@@ -78,7 +64,7 @@ pub fn list(args: ListArgs) -> eyre::Result<()> {
     let mut total_compressed: u64 = 0;
     let mut total_uncompressed: u64 = 0;
 
-    for chunk in wad.chunks().values() {
+    for chunk in wad.chunks() {
         let path_str = hashtable.resolve_path(chunk.path_hash);
 
         // Apply pattern filter
