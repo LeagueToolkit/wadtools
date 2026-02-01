@@ -119,6 +119,10 @@ pub enum Commands {
         )]
         pattern: Option<String>,
 
+        /// Only include chunks whose path hash matches one of these 16-char hex values
+        #[arg(long, value_name = "HASH", num_args = 1..)]
+        hash: Option<Vec<String>>,
+
         /// Invert the -f and -x filters (exclude matching files instead of including them)
         #[arg(short = 'v', long = "filter-invert")]
         filter_invert: bool,
@@ -186,6 +190,10 @@ pub enum Commands {
         )]
         pattern: Option<String>,
 
+        /// Only include chunks whose path hash matches one of these 16-char hex values
+        #[arg(long, value_name = "HASH", num_args = 1..)]
+        hash: Option<Vec<String>>,
+
         /// Invert the -f and -x filters (exclude matching files instead of including them)
         #[arg(short = 'v', long = "filter-invert")]
         filter_invert: bool,
@@ -242,6 +250,7 @@ fn main() -> eyre::Result<()> {
             hashtable,
             filter_type,
             pattern,
+            hash,
             filter_invert,
             list_filters,
             overwrite,
@@ -256,6 +265,7 @@ fn main() -> eyre::Result<()> {
             }
             let hashtable_dir = args.hashtable_dir.or_else(|| config.hashtable_dir.clone());
             let ht = load_hashtable(hashtable_dir.as_deref(), hashtable.as_deref())?;
+            let hash_filter = parse_hashes(hash)?;
             for path in resolved {
                 extract(
                     ExtractArgs {
@@ -263,6 +273,7 @@ fn main() -> eyre::Result<()> {
                         output: output.clone(),
                         filter_type: filter_type.clone(),
                         pattern: pattern.clone(),
+                        hash: hash_filter.clone(),
                         filter_invert,
                         overwrite,
                     },
@@ -296,6 +307,7 @@ fn main() -> eyre::Result<()> {
             hashtable,
             filter_type,
             pattern,
+            hash,
             filter_invert,
             format,
             stats,
@@ -306,12 +318,14 @@ fn main() -> eyre::Result<()> {
             }
             let hashtable_dir = args.hashtable_dir.or_else(|| config.hashtable_dir.clone());
             let ht = load_hashtable(hashtable_dir.as_deref(), hashtable.as_deref())?;
+            let hash_filter = parse_hashes(hash)?;
             for path in resolved {
                 list(
                     ListArgs {
                         input: path,
                         filter_type: filter_type.clone(),
                         pattern: pattern.clone(),
+                        hash: hash_filter.clone(),
                         filter_invert,
                         format,
                         show_stats: stats,
@@ -420,6 +434,23 @@ fn parse_filter_type(s: &str) -> Result<LeagueFileKind, String> {
         LeagueFileKind::Unknown => Err(format!("Unknown file kind: {}", s)),
         other => Ok(other),
     }
+}
+
+fn parse_hashes(raw: Option<Vec<String>>) -> eyre::Result<Option<Vec<u64>>> {
+    let Some(strings) = raw else {
+        return Ok(None);
+    };
+    let mut hashes = Vec::with_capacity(strings.len());
+    for s in &strings {
+        let h = u64::from_str_radix(s, 16).map_err(|_| {
+            eyre::eyre!(
+                "invalid hash '{}': expected a 16-character hexadecimal value (e.g. 0a1b2c3d4e5f6789)",
+                s
+            )
+        })?;
+        hashes.push(h);
+    }
+    Ok(Some(hashes))
 }
 
 fn cli_styles() -> Styles {
