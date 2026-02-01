@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::fs::File;
 
 use crate::{
-    extractor::{should_skip_pattern, should_skip_type},
+    extractor::{should_skip_hash, should_skip_pattern, should_skip_type},
     utils::{create_filter_pattern, format_chunk_path_hash, WadHashtable},
 };
 
@@ -26,6 +26,7 @@ pub struct ListArgs {
     pub input: String,
     pub filter_type: Option<Vec<LeagueFileKind>>,
     pub pattern: Option<String>,
+    pub hash: Option<Vec<u64>>,
     pub filter_invert: bool,
     pub format: ListOutputFormat,
     pub show_stats: bool,
@@ -65,6 +66,11 @@ pub fn list(args: ListArgs, hashtable: &WadHashtable) -> eyre::Result<()> {
     let mut total_uncompressed: u64 = 0;
 
     for chunk in wad.chunks() {
+        // Apply hash filter (cheapest check, before resolving path)
+        if should_skip_hash(chunk.path_hash, args.hash.as_deref(), args.filter_invert) {
+            continue;
+        }
+
         let path_str = hashtable.resolve_path(chunk.path_hash);
 
         // Apply pattern filter

@@ -30,6 +30,7 @@ pub struct Extractor<'a> {
     wad: &'a mut Wad<File>,
     hashtable: &'a WadHashtable,
     filter_pattern: Option<Regex>,
+    hash_filter: Option<Vec<u64>>,
     filter_invert: bool,
 }
 
@@ -39,12 +40,17 @@ impl<'a> Extractor<'a> {
             wad,
             hashtable,
             filter_pattern: None,
+            hash_filter: None,
             filter_invert: false,
         }
     }
 
     pub fn set_filter_pattern(&mut self, filter_pattern: Option<Regex>) {
         self.filter_pattern = filter_pattern;
+    }
+
+    pub fn set_hash_filter(&mut self, hash_filter: Option<Vec<u64>>) {
+        self.hash_filter = hash_filter;
     }
 
     pub fn set_filter_invert(&mut self, filter_invert: bool) {
@@ -133,6 +139,17 @@ impl<'a> Extractor<'a> {
             for chunk in chunks.iter() {
                 if err_holder.lock().unwrap().is_some() {
                     break;
+                }
+
+                // Hash filter is the cheapest check — do it before resolving path
+                if should_skip_hash(
+                    chunk.path_hash,
+                    self.hash_filter.as_deref(),
+                    self.filter_invert,
+                ) {
+                    let done = counter.fetch_add(1, Ordering::Relaxed) + 1;
+                    span.pb_set_position(done as u64);
+                    continue;
                 }
 
                 let chunk_path_str = self.hashtable.resolve_path(chunk.path_hash);
@@ -298,6 +315,15 @@ pub(crate) fn should_skip_pattern(
         return matched == filter_invert;
     }
     false
+}
+
+/// Returns true if the chunk should be skipped based on the hash filter.
+pub(crate) fn should_skip_hash(
+    path_hash: u64,
+    hash_filter: Option<&[u64]>,
+    filter_invert: bool,
+) -> bool {
+    hash_filter.is_some_and(|hashes| hashes.contains(&path_hash) == filter_invert)
 }
 
 /// Returns true if the chunk should be skipped based on the type filter.
