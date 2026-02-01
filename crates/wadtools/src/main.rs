@@ -122,6 +122,10 @@ pub enum Commands {
         /// Invert the -f and -x filters (exclude matching files instead of including them)
         #[arg(short = 'v', long = "filter-invert")]
         filter_invert: bool,
+
+        /// Overwrite existing files (default: skip existing)
+        #[arg(long)]
+        overwrite: bool,
     },
     /// Compare two wad files
     ///
@@ -240,6 +244,7 @@ fn main() -> eyre::Result<()> {
             pattern,
             filter_invert,
             list_filters,
+            overwrite,
         } => {
             if list_filters {
                 print_supported_filters();
@@ -259,6 +264,7 @@ fn main() -> eyre::Result<()> {
                         filter_type: filter_type.clone(),
                         pattern: pattern.clone(),
                         filter_invert,
+                        overwrite,
                     },
                     &ht,
                 )?;

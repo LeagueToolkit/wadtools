@@ -8,8 +8,8 @@ use league_toolkit::{
     wad::{decompress_raw, Wad, WadChunk},
 };
 use std::{
-    fs::{self, File},
-    io,
+    fs::{self, File, OpenOptions},
+    io::{self, Write},
     sync::{
         atomic::{AtomicUsize, Ordering},
         mpsc,
@@ -19,6 +19,12 @@ use tracing_indicatif::span_ext::IndicatifSpanExt;
 use tracing_indicatif::style::ProgressStyle;
 
 const MAX_LOG_PATH_LEN: usize = 120;
+
+enum ChunkResult {
+    Extracted,
+    SkippedFilter,
+    SkippedExisting,
+}
 
 pub struct Extractor<'a> {
     wad: &'a mut Wad<File>,
@@ -49,7 +55,8 @@ impl<'a> Extractor<'a> {
         &mut self,
         extract_directory: impl AsRef<Utf8Path>,
         filter_type: Option<&[LeagueFileKind]>,
-    ) -> eyre::Result<usize> {
+        overwrite: bool,
+    ) -> eyre::Result<(usize, usize)> {
         let extract_directory = extract_directory.as_ref().to_path_buf();
 
         let chunks: Vec<WadChunk> = self.wad.chunks().iter().copied().collect();
@@ -71,6 +78,7 @@ impl<'a> Extractor<'a> {
 
         let counter = AtomicUsize::new(0);
         let extracted_counter = AtomicUsize::new(0);
+        let skipped_existing_counter = AtomicUsize::new(0);
         let filter_invert = self.filter_invert;
         let extract_dir = &extract_directory;
         let err_holder: std::sync::Mutex<Option<eyre::Report>> = std::sync::Mutex::new(None);
@@ -82,6 +90,7 @@ impl<'a> Extractor<'a> {
                     for (chunk, path_str, raw) in rx {
                         let counter = &counter;
                         let extracted_counter = &extracted_counter;
+                        let skipped_existing_counter = &skipped_existing_counter;
                         let err_holder = &err_holder;
                         let progress_span = &span;
 
@@ -93,13 +102,17 @@ impl<'a> Extractor<'a> {
                                 extract_dir,
                                 filter_type,
                                 filter_invert,
+                                overwrite,
                             );
 
                             match result {
-                                std::result::Result::Ok(true) => {
+                                std::result::Result::Ok(ChunkResult::Extracted) => {
                                     extracted_counter.fetch_add(1, Ordering::Relaxed);
                                 }
-                                std::result::Result::Ok(false) => {}
+                                std::result::Result::Ok(ChunkResult::SkippedExisting) => {
+                                    skipped_existing_counter.fetch_add(1, Ordering::Relaxed);
+                                }
+                                std::result::Result::Ok(ChunkResult::SkippedFilter) => {}
                                 Err(e) => {
                                     let mut guard = err_holder.lock().unwrap();
                                     if guard.is_none() {
@@ -155,7 +168,10 @@ impl<'a> Extractor<'a> {
             return Err(err);
         }
 
-        Ok(extracted_counter.load(Ordering::Relaxed))
+        Ok((
+            extracted_counter.load(Ordering::Relaxed),
+            skipped_existing_counter.load(Ordering::Relaxed),
+        ))
     }
 }
 
@@ -166,7 +182,8 @@ fn process_chunk(
     extract_dir: &Utf8Path,
     filter_type: Option<&[LeagueFileKind]>,
     filter_invert: bool,
-) -> eyre::Result<bool> {
+    overwrite: bool,
+) -> eyre::Result<ChunkResult> {
     let chunk_data = decompress_raw(raw, chunk.compression_type, chunk.uncompressed_size)
         .wrap_err(format!(
             "failed to decompress chunk (chunk_path: {})",
@@ -175,21 +192,28 @@ fn process_chunk(
 
     let chunk_kind = LeagueFileKind::identify_from_bytes(&chunk_data);
     if should_skip_type(chunk_kind, filter_type, filter_invert) {
-        return Ok(false);
+        return Ok(ChunkResult::SkippedFilter);
     }
 
     let chunk_path = Utf8Path::new(path_str);
     let final_path = resolve_final_chunk_path(extract_dir, chunk_path, &chunk_data, chunk_kind);
     let full_path = extract_dir.join(&final_path);
+
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent.as_std_path())?;
     }
 
-    let write_result = fs::write(full_path.as_std_path(), &chunk_data);
-    match write_result {
-        std::result::Result::Ok(()) => {}
+    match write_chunk_file(full_path.as_std_path(), &chunk_data, overwrite) {
+        std::result::Result::Ok(result) => return Ok(result),
         Err(error) if error.kind() == io::ErrorKind::InvalidFilename => {
-            write_long_filename_chunk(chunk, final_path, extract_dir, &chunk_data, chunk_kind)?;
+            return write_long_filename_chunk(
+                chunk,
+                final_path,
+                extract_dir,
+                &chunk_data,
+                chunk_kind,
+                overwrite,
+            );
         }
         Err(error) => {
             return Err(error).wrap_err(format!(
@@ -198,8 +222,32 @@ fn process_chunk(
             ));
         }
     }
+}
 
-    Ok(true)
+/// Writes chunk data to a file. When `overwrite` is false, uses `create_new(true)` for an
+/// atomic existence check, returning `SkippedExisting` on `AlreadyExists`. This avoids the
+/// TOCTOU race of a separate exists() check followed by write().
+fn write_chunk_file(
+    path: &std::path::Path,
+    data: &[u8],
+    overwrite: bool,
+) -> io::Result<ChunkResult> {
+    if overwrite {
+        fs::write(path, data)?;
+        return std::result::Result::Ok(ChunkResult::Extracted);
+    }
+
+    match OpenOptions::new().write(true).create_new(true).open(path) {
+        std::result::Result::Ok(mut file) => {
+            file.write_all(data)?;
+            std::result::Result::Ok(ChunkResult::Extracted)
+        }
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            tracing::debug!("skipping existing file: {}", path.display());
+            std::result::Result::Ok(ChunkResult::SkippedExisting)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 fn resolve_final_chunk_path(
@@ -267,11 +315,14 @@ fn write_long_filename_chunk(
     extract_directory: impl AsRef<Utf8Path>,
     chunk_data: &[u8],
     chunk_kind: LeagueFileKind,
-) -> eyre::Result<()> {
+    overwrite: bool,
+) -> eyre::Result<ChunkResult> {
     let mut hashed_path = Utf8PathBuf::from(format!("{:016x}", chunk.path_hash));
     if let Some(ext) = chunk_kind.extension() {
         hashed_path.set_extension(ext);
     }
+
+    let full_path = extract_directory.as_ref().join(&hashed_path);
 
     let disp = chunk_path.as_ref().as_str().to_string();
     let truncated = truncate_middle(&disp, MAX_LOG_PATH_LEN);
@@ -281,12 +332,11 @@ fn write_long_filename_chunk(
         &hashed_path
     );
 
-    fs::write(
-        extract_directory.as_ref().join(hashed_path).as_std_path(),
+    Ok(write_chunk_file(
+        full_path.as_std_path(),
         chunk_data,
-    )?;
-
-    Ok(())
+        overwrite,
+    )?)
 }
 
 #[cfg(test)]
