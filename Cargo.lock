@@ -814,9 +814,9 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "league-toolkit"
-version = "0.2.16"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7be6c8761e53d2493be81a181d6555dc105963291dd02dde2f8c78552d1613e5"
+checksum = "731977c88708f1645c6b6c661a4529d025ddd186f45205146388c3e8df30e78e"
 dependencies = [
  "ltk_anim",
  "ltk_file",
@@ -976,9 +976,9 @@ dependencies = [
 
 [[package]]
 name = "ltk_wad"
-version = "0.2.11"
+version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99d24865830fb26a67154ad5e893023cb6841e52385631d735f13d49ff410799"
+checksum = "e0b540870b2dbf58257ec0bcb2cb64f26195e4eaef6e5955bad82f97067234a4"
 dependencies = [
  "byteorder",
  "camino",
