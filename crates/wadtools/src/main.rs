@@ -157,6 +157,23 @@ pub enum Commands {
         /// Output the diffs to a .csv file
         #[arg(short, long, help = "The path to the output .csv file")]
         output: Option<String>,
+
+        /// Only include diffs whose resolved path matches this regex
+        #[arg(
+            short = 'x',
+            long,
+            value_name = "REGEX",
+            help = "Only include diffs whose resolved path matches this regex (case-insensitive by default; use (?-i) to disable)"
+        )]
+        pattern: Option<String>,
+
+        /// Only include diffs whose path hash matches one of these 16-char hex values
+        #[arg(long, value_name = "HASH", num_args = 1..)]
+        hash: Option<Vec<String>>,
+
+        /// Invert the -x and --hash filters (exclude matching diffs instead of including them)
+        #[arg(short = 'v', long = "filter-invert")]
+        filter_invert: bool,
     },
     /// Print the default hashtable directory
     #[command(visible_alias = "hd")]
@@ -293,13 +310,25 @@ fn main() -> eyre::Result<()> {
             target,
             hashtable,
             output,
-        } => diff(DiffArgs {
-            reference,
-            target,
-            hashtable_path: hashtable,
-            output,
-            hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
-        }),
+            pattern,
+            hash,
+            filter_invert,
+        } => {
+            let hashtable_dir = args.hashtable_dir.or_else(|| config.hashtable_dir.clone());
+            let ht = load_hashtable(hashtable_dir.as_deref(), hashtable.as_deref())?;
+            let hash_filter = parse_hashes(hash)?;
+            diff(
+                DiffArgs {
+                    reference,
+                    target,
+                    output,
+                    pattern,
+                    hash: hash_filter,
+                    filter_invert,
+                },
+                &ht,
+            )
+        }
         Commands::HashtableDir => {
             if let Some(dir) = default_hashtable_dir() {
                 println!("{}", dir);
