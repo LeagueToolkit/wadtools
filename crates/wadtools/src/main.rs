@@ -107,7 +107,7 @@ pub enum Commands {
         filter_type: Option<Vec<LeagueFileKind>>,
 
         /// List available filter types
-        #[arg(long, visible_alias = "lf")]
+        #[arg(long, visible_short_alias = 'l')]
         list_filters: bool,
 
         /// Only extract chunks whose resolved path matches this regex
