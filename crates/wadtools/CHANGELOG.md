@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.6](https://github.com/LeagueToolkit/wadtools/compare/v0.5.5...v0.5.6) - 2026-02-14
+
+### Added
+
+- better diff command
+
+### Fixed
+
+- update list_filters argument alias to use short form
+
+### Other
+
+- update league-toolkit to version 0.2.17
+
 ## [0.5.5](https://github.com/LeagueToolkit/wadtools/compare/v0.5.4...v0.5.5) - 2026-02-01
 
 ### Added
