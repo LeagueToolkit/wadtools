@@ -9,6 +9,7 @@ use league_toolkit::{
     wad::{decompress_raw, Wad, WadChunk},
 };
 use std::{
+    borrow::Cow,
     collections::HashMap,
     fs::{self, File, OpenOptions},
     io::{self, Write},
@@ -39,7 +40,7 @@ pub struct Extractor<'a> {
     wad: &'a mut Wad<File>,
     hashtable: &'a WadHashtable,
     /// Names recovered from `.bin` files for this WAD, consulted before the shared
-    /// hashtable. Gap-fill only — never contains a hash the hashtable already resolves.
+    /// hashtable. Gap-fill only - never contains a hash the hashtable already resolves.
     discovered: HashMap<u64, Arc<str>>,
     filter_pattern: Option<Regex>,
     hash_filter: Option<Vec<u64>>,
@@ -64,11 +65,11 @@ impl<'a> Extractor<'a> {
 
     /// Resolves a chunk's path, preferring names recovered from bins over the shared
     /// hashtable (which falls back to a hex string when the hash is unknown).
-    fn resolve_path(&self, path_hash: u64) -> Arc<str> {
-        self.discovered
-            .get(&path_hash)
-            .cloned()
-            .unwrap_or_else(|| self.hashtable.resolve_path(path_hash))
+    fn resolve_path(&self, path_hash: u64) -> Cow<'_, str> {
+        match self.discovered.get(&path_hash) {
+            Some(path) => Cow::Borrowed(path),
+            None => self.hashtable.resolve_path(path_hash),
+        }
     }
 
     pub fn set_filter_pattern(&mut self, filter_pattern: Option<Regex>) {
@@ -173,7 +174,7 @@ impl<'a> Extractor<'a> {
                     break;
                 }
 
-                // Hash filter is the cheapest check — do it before resolving path
+                // Hash filter is the cheapest check - do it before resolving path
                 if should_skip_hash(
                     chunk.path_hash,
                     self.hash_filter.as_deref(),
@@ -184,7 +185,7 @@ impl<'a> Extractor<'a> {
                     continue;
                 }
 
-                let chunk_path_str = self.resolve_path(chunk.path_hash);
+                let chunk_path_str = self.resolve_path(chunk.path_hash).into_owned();
 
                 span.pb_set_message(&truncate_middle(chunk_path_str.as_ref(), MAX_LOG_PATH_LEN));
 
@@ -200,11 +201,11 @@ impl<'a> Extractor<'a> {
 
                 let raw = self.wad.load_chunk_raw(chunk).wrap_err(format!(
                     "failed to read raw chunk (chunk_path: {})",
-                    chunk_path_str.as_ref()
+                    chunk_path_str.as_str()
                 ))?;
 
                 // Blocks if the channel is full, bounding memory
-                let _ = tx.send((*chunk, chunk_path_str.to_string(), raw));
+                let _ = tx.send((*chunk, chunk_path_str, raw));
             }
 
             drop(tx);
@@ -259,27 +260,23 @@ fn process_chunk(
     let size = chunk_data.len() as u64;
     match write_chunk_file(full_path.as_std_path(), &chunk_data, overwrite) {
         std::result::Result::Ok(ChunkWriteResult::Written) => {
-            return Ok(ChunkResult::Extracted(chunk_kind, size));
+            Ok(ChunkResult::Extracted(chunk_kind, size))
         }
         std::result::Result::Ok(ChunkWriteResult::SkippedExisting) => {
-            return Ok(ChunkResult::SkippedExisting);
+            Ok(ChunkResult::SkippedExisting)
         }
-        Err(error) if error.kind() == io::ErrorKind::InvalidFilename => {
-            return write_long_filename_chunk(
-                chunk,
-                final_path,
-                extract_dir,
-                &chunk_data,
-                chunk_kind,
-                overwrite,
-            );
-        }
-        Err(error) => {
-            return Err(error).wrap_err(format!(
-                "failed to write chunk (chunk_path: {})",
-                truncate_middle(full_path.as_str(), MAX_LOG_PATH_LEN)
-            ));
-        }
+        Err(error) if error.kind() == io::ErrorKind::InvalidFilename => write_long_filename_chunk(
+            chunk,
+            final_path,
+            extract_dir,
+            &chunk_data,
+            chunk_kind,
+            overwrite,
+        ),
+        Err(error) => Err(error).wrap_err(format!(
+            "failed to write chunk (chunk_path: {})",
+            truncate_middle(full_path.as_str(), MAX_LOG_PATH_LEN)
+        )),
     }
 }
 

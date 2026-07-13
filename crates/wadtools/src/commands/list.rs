@@ -65,13 +65,15 @@ pub fn list(args: ListArgs, hashtable: &WadHashtable) -> eyre::Result<()> {
     let mut total_compressed: u64 = 0;
     let mut total_uncompressed: u64 = 0;
 
-    for chunk in wad.chunks() {
-        // Apply hash filter (cheapest check, before resolving path)
+    let chunks = wad.chunks().as_slice();
+    let path_hashes: Vec<u64> = chunks.iter().map(|chunk| chunk.path_hash).collect();
+    let resolved_paths = hashtable.resolve_batch(&path_hashes);
+
+    for (chunk, path_str) in chunks.iter().zip(&resolved_paths) {
+        // Apply hash filter (cheapest check)
         if should_skip_hash(chunk.path_hash, args.hash.as_deref(), args.filter_invert) {
             continue;
         }
-
-        let path_str = hashtable.resolve_path(chunk.path_hash);
 
         // Apply pattern filter
         if should_skip_pattern(

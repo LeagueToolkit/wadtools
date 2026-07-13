@@ -26,10 +26,17 @@ directories-next = "2.0"
 dirs-next = "2.0"
 camino = "1.1"
 convert_case = "0.9.0"
-ureq = "2.12"
 rayon = "1.10"
 dashmap = "6"
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
+# `download-hashes` streams release assets through our own progress-bar `Fetch`
+# (mimir's bundled `UreqFetch` buffers the whole body, so it can't drive a bar).
+ureq = "2.12"
+
+# TODO: switch to crates.io (ltk_mimir_cache = "0.1", ltk_hashdb = "0.1") once published.
+# The `ureq` feature exposes mimir's `HttpFetchError` (reused by our fetcher).
+ltk_mimir_cache = { git = "https://github.com/LeagueToolkit/mimir", rev = "c3282dfc0f7a03675bddda434b3202b05fe4a6a7", features = ["ureq"] }
+ltk_hashdb = { git = "https://github.com/LeagueToolkit/mimir", rev = "c3282dfc0f7a03675bddda434b3202b05fe4a6a7" }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

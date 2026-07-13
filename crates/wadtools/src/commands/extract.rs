@@ -40,10 +40,12 @@ fn discover_bin_paths(
     let chunk_hashes: HashSet<u64> = wad.chunks().iter().map(|c| c.path_hash).collect();
     let discovered = scan_wad_bin_paths(wad, hashtable, &chunk_hashes, full_bin_scan);
     if !discovered.is_empty() {
-        tracing::info!("recovered {} chunk name(s) from bin files", discovered.len());
-    
+        tracing::info!(
+            "recovered {} chunk name(s) from bin files",
+            discovered.len()
+        );
     }
-    
+
     discovered
 }
 

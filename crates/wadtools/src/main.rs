@@ -3,6 +3,7 @@ use clap::builder::{styling::AnsiColor, Styles};
 use clap::error::ErrorKind;
 use clap::{Parser, Subcommand, ValueEnum};
 use league_toolkit::file::LeagueFileKind;
+use ltk_mimir_cache::HashStore;
 use serde::de::value::Error;
 use serde::de::IntoDeserializer;
 use serde::Deserialize;
@@ -15,7 +16,7 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{filter, fmt};
 use utils::config::{default_config_path, load_or_create_config, resolve_and_persist_progress};
-use utils::{default_hashtable_dir, expand_wad_inputs, resolve_inputs, WadHashtable};
+use utils::{cleanup_legacy_hashtables, expand_wad_inputs, resolve_inputs, WadHashtable};
 
 mod bin_scan;
 mod commands;
@@ -75,8 +76,8 @@ struct Args {
     #[arg(long, value_name = "true|false")]
     progress: Option<bool>,
 
-    /// Optional directory to recursively load hashtable files from
-    /// Overrides the default discovery directory and config value when provided
+    /// Optional override for the mimir hash-table cache directory
+    /// Overrides the default cache location (and the `MIMIR_DIR` env var / config value) when provided
     #[arg(long, value_name = "DIR")]
     hashtable_dir: Option<String>,
 
@@ -194,7 +195,7 @@ pub enum Commands {
         #[arg(short = 'v', long = "filter-invert")]
         filter_invert: bool,
     },
-    /// Print the default hashtable directory
+    /// Print the mimir hash-table cache directory
     #[command(visible_alias = "hd")]
     HashtableDir,
     /// List the contents of a wad file
@@ -246,9 +247,10 @@ pub enum Commands {
         #[arg(short = 's', long, default_value_t = true)]
         stats: bool,
     },
-    /// Download/update WAD hashtables from CommunityDragon
+    /// Download/update WAD hash tables into the mimir shared cache
     ///
-    /// Downloads hashes.game.txt and hashes.lcu.txt to the configured hashtable directory.
+    /// Fetches the latest published mimir `.lhdb` tables and installs them into the
+    /// shared cache directory (see `hashtable-dir`).
     #[command(visible_alias = "dl")]
     DownloadHashes,
     /// Manage Windows Explorer integration (right-click context menu)
@@ -304,6 +306,8 @@ fn run(args: Args) -> eyre::Result<()> {
 
     initialize_tracing(args.verbosity, show_progress)?;
 
+    cleanup_legacy_hashtables();
+
     match args.command {
         Commands::Extract {
             input,
@@ -323,12 +327,12 @@ fn run(args: Args) -> eyre::Result<()> {
                 print_supported_filters();
                 return Ok(());
             }
-            
+
             let resolved = expand_wad_inputs(resolve_inputs(&input));
             if resolved.is_empty() {
                 return Err(eyre::eyre!("No input files provided"));
             }
-            
+
             let hashtable_dir = args.hashtable_dir.or_else(|| config.hashtable_dir.clone());
             let ht = load_hashtable(hashtable_dir.as_deref(), hashtable.as_deref())?;
             let hash_filter = parse_hashes(hash)?;
@@ -376,11 +380,9 @@ fn run(args: Args) -> eyre::Result<()> {
             )
         }
         Commands::HashtableDir => {
-            if let Some(dir) = default_hashtable_dir() {
-                println!("{}", dir);
-            } else {
-                println!("<no default hashtable directory>");
-            }
+            let cache_dir = args.hashtable_dir.or_else(|| config.hashtable_dir.clone());
+            let store = resolve_store(cache_dir.as_deref())?;
+            println!("{}", store.dir().display());
             Ok(())
         }
         Commands::List {
@@ -423,18 +425,22 @@ fn run(args: Args) -> eyre::Result<()> {
     }
 }
 
+fn resolve_store(cache_dir_override: Option<&str>) -> eyre::Result<HashStore> {
+    match cache_dir_override {
+        Some(dir) => Ok(HashStore::at(dir)),
+        None => HashStore::discover()
+            .map_err(|e| eyre::eyre!("could not determine the mimir cache directory: {e}")),
+    }
+}
+
 fn load_hashtable(
-    hashtable_dir: Option<&str>,
+    cache_dir_override: Option<&str>,
     hashtable_file: Option<&str>,
 ) -> eyre::Result<WadHashtable> {
-    let mut hashtable = WadHashtable::new()?;
-    if let Some(dir_override) = hashtable_dir {
-        hashtable.add_from_dir(Utf8Path::new(dir_override))?;
-    } else if let Some(dir) = default_hashtable_dir() {
-        hashtable.add_from_dir(dir)?;
-    }
+    let store = resolve_store(cache_dir_override)?;
+    let mut hashtable = WadHashtable::from_store(&store);
     if let Some(path) = hashtable_file {
-        tracing::info!("loading hashtable from {}", path);
+        tracing::info!("loading supplemental hashtable from {}", path);
         hashtable.add_from_file(&File::open(path)?)?;
     }
     Ok(hashtable)

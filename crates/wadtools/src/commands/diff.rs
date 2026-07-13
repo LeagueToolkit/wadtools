@@ -7,7 +7,7 @@ use colored::Colorize;
 use fancy_regex::Regex;
 use league_toolkit::wad::{Wad, WadChunk};
 use serde::Serialize;
-use std::sync::Arc;
+use std::borrow::Cow;
 
 use crate::{
     extractor::{should_skip_hash, should_skip_pattern},
@@ -95,7 +95,7 @@ fn diff_primary_path_hash(diff: &ChunkDiff) -> u64 {
 }
 
 /// Returns the primary resolved path for a diff entry (used for sorting/filtering).
-fn diff_primary_path(diff: &ChunkDiff, hashtable: &WadHashtable) -> Arc<str> {
+fn diff_primary_path<'a>(diff: &ChunkDiff, hashtable: &'a WadHashtable) -> Cow<'a, str> {
     match diff {
         ChunkDiff::New(chunk) => hashtable.resolve_path(chunk.path_hash),
         ChunkDiff::Removed(chunk) => hashtable.resolve_path(chunk.path_hash),

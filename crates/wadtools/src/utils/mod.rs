@@ -110,10 +110,14 @@ pub fn truncate_middle(input: &str, max_len: usize) -> String {
     format!("{}...{}", left_str, right_str)
 }
 
-/// Returns the default directory where wad hashtables should be looked up.
-/// On Windows, prefers the user's Documents folder: Documents/LeagueToolkit/wad_hashtables
-/// On other platforms, uses platform-appropriate data directory via directories_next.
-pub fn default_hashtable_dir() -> Option<Utf8PathBuf> {
+/// Returns the directory the pre-mimir wadtools used for the CommunityDragon
+/// `hashes.*.txt` files. Retained only so we can clean those files up; hash
+/// resolution now uses the mimir shared cache (see [`crate::utils::WadHashtable`]).
+///
+/// On Windows this was the user's Documents folder
+/// (`Documents/LeagueToolkit/wad_hashtables`); on other platforms the
+/// platform data directory via `directories_next`.
+pub fn legacy_hashtable_dir() -> Option<Utf8PathBuf> {
     #[cfg(target_os = "windows")]
     {
         if let Some(mut doc_dir) = dirs_next::document_dir() {
@@ -130,6 +134,50 @@ pub fn default_hashtable_dir() -> Option<Utf8PathBuf> {
     }
 
     None
+}
+
+/// The CommunityDragon text files the old download flow wrote into the legacy
+/// hashtable directory.
+const LEGACY_HASHTABLE_FILES: &[&str] = &["hashes.game.txt", "hashes.lcu.txt"];
+
+/// Removes the old CommunityDragon `hashes.*.txt` files now that resolution is
+/// served from the mimir shared cache.
+///
+/// Best-effort and quiet: only the files we know we wrote are deleted (any custom
+/// files the user placed there are left alone), and the directory is removed only
+/// if it ends up empty. Errors are logged at debug level and never surfaced.
+pub fn cleanup_legacy_hashtables() {
+    let Some(dir) = legacy_hashtable_dir() else {
+        return;
+    };
+    if !dir.exists() {
+        return;
+    }
+
+    for name in LEGACY_HASHTABLE_FILES {
+        let file = dir.join(name);
+        if !file.exists() {
+            continue;
+        }
+        match std::fs::remove_file(file.as_std_path()) {
+            Ok(()) => tracing::info!("removed legacy hashtable file {file}"),
+            Err(error) => tracing::debug!("could not remove legacy hashtable file {file}: {error}"),
+        }
+    }
+
+    // Drop the directory only when it is now empty, so we never delete unrelated
+    // files a user may have added.
+    let is_empty = std::fs::read_dir(dir.as_std_path())
+        .map(|mut entries| entries.next().is_none())
+        .unwrap_or(false);
+    if is_empty {
+        match std::fs::remove_dir(dir.as_std_path()) {
+            Ok(()) => tracing::info!("removed empty legacy hashtable directory {dir}"),
+            Err(error) => {
+                tracing::debug!("could not remove legacy hashtable directory {dir}: {error}")
+            }
+        }
+    }
 }
 
 pub fn format_size(bytes: u64) -> String {

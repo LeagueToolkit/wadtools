@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Hash → path resolution now uses the [mimir](https://github.com/LeagueToolkit/mimir) shared
+  `.lhdb` cache instead of CommunityDragon `hashes.*.txt` files. Tables are memory-mapped and
+  shared across LeagueToolkit tools, so there is no per-run parse of a ~250 MB text blob.
+- `download-hashes` / `dl` now installs the published mimir tables into the shared cache
+  (checksum-verified, atomic, incremental) instead of downloading CommunityDragon text files.
+- `hashtable-dir` / `hd` now prints the mimir cache directory; `--hashtable-dir` and the
+  `hashtable_dir` config value now override that cache directory (also settable via `MIMIR_DIR`).
+- `-H/--hashtable <PATH>` still loads a supplemental `<hex-hash> <path>` text file, layered on
+  top of the cache.
+
+### Removed
+
+- On first run after upgrading, the old `Documents/LeagueToolkit/wad_hashtables`
+  `hashes.game.txt` / `hashes.lcu.txt` files are removed (best-effort; custom files are left
+  untouched and the folder is deleted only if it becomes empty).
+
 ## [0.5.6](https://github.com/LeagueToolkit/wadtools/compare/v0.5.5...v0.5.6) - 2026-02-14
 
 ### Added

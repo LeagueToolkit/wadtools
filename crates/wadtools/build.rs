@@ -1,7 +1,7 @@
 //! Build script: embeds the application icon into the Windows executable so the binary
 //! (and the Explorer context-menu entries that reference it) carry wadtools branding.
 //!
-//! The icon is optional — if `assets/wadtools.ico` is not present the embed is skipped so
+//! The icon is optional - if `assets/wadtools.ico` is not present the embed is skipped so
 //! source builds keep working before the asset is added. Non-Windows targets do nothing.
 
 use std::path::Path;

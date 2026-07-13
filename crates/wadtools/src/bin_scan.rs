@@ -2,7 +2,7 @@
 //!
 //! WAD chunks are keyed only by `xxh64(lowercase_path)`. Chunks whose hash is not in
 //! the loaded community hashtable would otherwise extract as anonymous 16-hex names.
-//! League `.bin` files reference other assets by path — both as explicit dependency
+//! League `.bin` files reference other assets by path - both as explicit dependency
 //! links (`BinTree::dependencies`) and as string properties (textures, meshes, vfx,
 //! ...). Hashing those discovered paths and matching them against the WAD's own chunk
 //! hashes lets us fill in real names/folders before extraction.
@@ -121,7 +121,10 @@ fn load_and_decompress<S: Read + Seek>(wad: &mut Wad<S>, chunk: &WadChunk) -> Op
     match decompress_raw(&raw, chunk.compression_type, chunk.uncompressed_size) {
         Ok(data) => Some(data),
         Err(error) => {
-            tracing::debug!("failed to decompress chunk {:016x}: {error}", chunk.path_hash);
+            tracing::debug!(
+                "failed to decompress chunk {:016x}: {error}",
+                chunk.path_hash
+            );
             None
         }
     }
@@ -129,7 +132,7 @@ fn load_and_decompress<S: Read + Seek>(wad: &mut Wad<S>, chunk: &WadChunk) -> Op
 
 /// Parses one decompressed bin and folds its discovered names into `discovered`. A name
 /// is kept only when its hash matches a real chunk in `chunk_hashes` and is not already
-/// known — the overlay is purely additive gap-fill. Returns the chunk hashes of any
+/// known - the overlay is purely additive gap-fill. Returns the chunk hashes of any
 /// newly discovered paths that are themselves `.bin` files, so the caller can follow
 /// links transitively.
 fn harvest_bin(
@@ -147,7 +150,7 @@ fn harvest_bin(
         let hash = hash_wad_path(&string);
         if !chunk_hashes.contains(&hash)
             || discovered.contains_key(&hash)
-            || hashtable.items().contains_key(&hash)
+            || hashtable.contains(hash)
         {
             continue;
         }
@@ -163,7 +166,7 @@ fn harvest_bin(
 /// Scans the `.bin` files of a WAD and returns an overlay of `path_hash -> path` for
 /// paths discovered inside them (dependency links plus string properties). A discovered
 /// path is kept only when its hash matches an actual chunk in `chunk_hashes` and the
-/// community `hashtable` does not already resolve it — the overlay is purely additive
+/// community `hashtable` does not already resolve it - the overlay is purely additive
 /// gap-fill that never overrides official names.
 ///
 /// Two modes:
@@ -194,14 +197,22 @@ pub fn scan_wad_bin_paths<S: Read + Seek>(
             ) {
                 continue;
             }
-            harvest_bin(&data, chunk_hashes, hashtable, &mut discovered, &mut scratch);
+            harvest_bin(
+                &data,
+                chunk_hashes,
+                hashtable,
+                &mut discovered,
+                &mut scratch,
+            );
         }
         return discovered;
     }
 
     // Seed the queue with chunks already named `*.bin`, then follow discovered bin links.
-    let chunk_by_hash: HashMap<u64, WadChunk> =
-        chunks.iter().map(|chunk| (chunk.path_hash, *chunk)).collect();
+    let chunk_by_hash: HashMap<u64, WadChunk> = chunks
+        .iter()
+        .map(|chunk| (chunk.path_hash, *chunk))
+        .collect();
     let mut queue: VecDeque<u64> = chunks
         .iter()
         .filter(|chunk| is_bin_path(&hashtable.resolve_path(chunk.path_hash)))
@@ -219,7 +230,13 @@ pub fn scan_wad_bin_paths<S: Read + Seek>(
         let Some(data) = load_and_decompress(wad, &chunk) else {
             continue;
         };
-        let new_bins = harvest_bin(&data, chunk_hashes, hashtable, &mut discovered, &mut scratch);
+        let new_bins = harvest_bin(
+            &data,
+            chunk_hashes,
+            hashtable,
+            &mut discovered,
+            &mut scratch,
+        );
         queue.extend(new_bins);
     }
 
@@ -306,11 +323,9 @@ mod tests {
         wad_buffer.set_position(0);
         let mut wad = Wad::mount(wad_buffer).unwrap();
 
-        // Hashtable resolves only the bin path — the asset is anonymous.
+        // Hashtable resolves only the bin path - the asset is anonymous.
         let mut hashtable = WadHashtable::new().unwrap();
-        hashtable
-            .items_mut()
-            .insert(bin_hash, Arc::from("data/test.bin"));
+        hashtable.insert(bin_hash, "data/test.bin");
 
         let chunk_hashes: HashSet<u64> = [bin_hash, asset_hash].into_iter().collect();
         let discovered = scan_wad_bin_paths(&mut wad, &hashtable, &chunk_hashes, false);
@@ -338,7 +353,7 @@ mod tests {
 
         // Chain: root.bin (known) -> child.bin (anonymous) -> asset.dds (anonymous).
         // The asset is only reachable by parsing child.bin, which is itself only found
-        // by following root.bin's link — so this only works with transitive following.
+        // by following root.bin's link - so this only works with transitive following.
         let child_path = "data/child.bin";
         let asset_path = "assets/deep/asset.dds";
         let root_bytes = serialize_bin(&BinTree::builder().dependency(child_path).build());
@@ -369,9 +384,7 @@ mod tests {
 
         // Only the root bin is known up front.
         let mut hashtable = WadHashtable::new().unwrap();
-        hashtable
-            .items_mut()
-            .insert(root_hash, Arc::from("data/root.bin"));
+        hashtable.insert(root_hash, "data/root.bin");
 
         let chunk_hashes: HashSet<u64> = [root_hash, child_hash, asset_hash].into_iter().collect();
         let discovered = scan_wad_bin_paths(&mut wad, &hashtable, &chunk_hashes, false);

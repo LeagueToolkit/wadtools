@@ -63,7 +63,7 @@ cargo build --release
 
 ## Windows Explorer integration
 
-On Windows, wadtools can be driven straight from Explorer — no terminal required.
+On Windows, wadtools can be driven straight from Explorer - no terminal required.
 
 ### Drag-and-drop
 
@@ -83,10 +83,10 @@ wadtools shell install
 This adds a single **wadtools** submenu, pinned to the top of the right-click menu, containing:
 
 - On `.wad` / `.wad.client` files:
-  - **Extract** — extracts next to the file.
-  - **List contents** — prints the file listing.
+  - **Extract** - extracts next to the file.
+  - **List contents** - prints the file listing.
 - On folders:
-  - **Extract all WADs** — extracts every WAD inside.
+  - **Extract all WADs** - extracts every WAD inside.
 
 Manage the integration with:
 
@@ -115,7 +115,7 @@ Global options:
 - `-L, --verbosity <LEVEL>`: set log verbosity (`error`, `warning`, `info`, `debug`, `trace`)
 - `--config <FILE>`: load options from a TOML file (defaults to `wadtools.toml` next to the executable; created on first run)
 - `--progress <true|false>`: show/hide progress bars (overrides config)
-- `--hashtable-dir <DIR>`: recursively load hashtable files from this directory (overrides defaults and config)
+- `--hashtable-dir <DIR>`: override the mimir hash-table cache directory (overrides the default location, the `MIMIR_DIR` env var, and config)
 
 ### Extract
 
@@ -123,7 +123,7 @@ Extracts files from a WAD archive. Use `-i/--input` for the WAD file, `-o/--outp
 
 Common flags:
 
-- `-i, --input <PATH>...`: path(s) to input WAD file(s) — supports repeated flags or semicolon-delimited paths
+- `-i, --input <PATH>...`: path(s) to input WAD file(s) - supports repeated flags or semicolon-delimited paths
 - `-o, --output <DIR>`: output directory
 - `-H, --hashtable <PATH>` (also `-d`): optional hashtable file to resolve names
 - `-f, --filter-type <TYPE...>`: filter by file type(s) like `png`, `tga`, `bin`
@@ -164,10 +164,10 @@ Configuration file example (`wadtools.toml`):
 # Show progress bars by default (can be overridden by CLI)
 show_progress = true
 
-# Optional custom directory where hashtable files are loaded from
-# If set, wadtools will recursively load all files in this directory on start
-# This can be overridden by the CLI flag --hashtable-dir
-hashtable_dir = "C:/Users/you/Documents/LeagueToolkit/wad_hashtables"
+# Optional override for the mimir hash-table cache directory
+# If set, wadtools reads/writes the shared .lhdb cache here instead of the default
+# Can be overridden by the CLI flag --hashtable-dir or the MIMIR_DIR env var
+hashtable_dir = "C:/Users/you/AppData/Local/LeagueToolkit/hashes"
 ```
 
 ### Defaults: config and hashtable discovery
@@ -178,15 +178,26 @@ hashtable_dir = "C:/Users/you/Documents/LeagueToolkit/wad_hashtables"
   - You can point to a different file via `--config <FILE>`.
   - Precedence: CLI flags override config. `--progress=true|false` persists back into the resolved config file.
 
-- **Hashtable files**:
-  - We load hashtables recursively from one of the following, in order:
+- **Hash tables (mimir)**:
+  - Hash → path resolution is served from the [mimir](https://github.com/LeagueToolkit/mimir)
+    shared cache: a directory of compact, memory-mapped `.lhdb` tables plus a `manifest.json`.
+    It replaces the old ~250 MB of CommunityDragon `hashes.*.txt` files - smaller on disk, no
+    parse step at startup, and one copy shared across every LeagueToolkit tool on the machine.
+  - The cache directory is resolved in this order:
     1. `--hashtable-dir <DIR>` if provided
     2. `hashtable_dir` from `wadtools.toml` if set
-    3. Default directory:
-       - On Windows: `Documents/LeagueToolkit/wad_hashtables`.
-       - On other platforms: platform data dir from `directories_next` under `io/LeagueToolkit/wadtools/wad_hashtables`.
-  - If `-H/--hashtable <PATH>` is provided, that specific file is also loaded in addition to the directory above.
-  - If none of the directories exist, only the provided file (if any) is loaded.
+    3. The `MIMIR_DIR` environment variable if set
+    4. The platform default:
+       - Windows: `%LOCALAPPDATA%\LeagueToolkit\hashes`
+       - Linux: `$XDG_DATA_HOME/LeagueToolkit/hashes`
+       - macOS: `~/Library/Application Support/LeagueToolkit/hashes`
+  - Populate/update the cache with `wadtools download-hashes` (see below). Until it is populated,
+    unknown hashes fall back to their 16-character hex representation.
+  - `-H/--hashtable <PATH>` still loads a supplemental `<hex-hash> <path>` text file on top of the
+    cache, so you can layer in your own names.
+  - On first run after upgrading, wadtools removes the old `Documents/LeagueToolkit/wad_hashtables`
+    `hashes.game.txt` / `hashes.lcu.txt` files it used to download (custom files you added there are
+    left untouched, and the folder is removed only if it ends up empty).
 
 How filtering works:
 
@@ -239,7 +250,7 @@ Lists all chunks in a WAD file with metadata. Use `-i/--input` for the WAD file.
 
 Common flags:
 
-- `-i, --input <PATH>...`: path(s) to input WAD file(s) — supports repeated flags or semicolon-delimited paths
+- `-i, --input <PATH>...`: path(s) to input WAD file(s) - supports repeated flags or semicolon-delimited paths
 - `-H, --hashtable <PATH>` (also `-d`): optional hashtable file to resolve names
 - `-f, --filter-type <TYPE...>`: filter by file type(s) like `png`, `bin`, `dds`
 - `-x, --pattern <REGEX>`: filter by regex on the resolved path
@@ -291,9 +302,23 @@ wadtools diff -r old.wad.client -t new.wad.client -H hashtable.txt \
   -o diff.csv
 ```
 
-### Hashtable Directory
+### Download / update hash tables
 
-Show the default hashtable directory:
+Fetch the latest published mimir hash tables and install them into the shared cache:
+
+```bash
+wadtools download-hashes
+# or
+wadtools dl
+```
+
+This downloads the current `.lhdb` tables (and `manifest.json`) from mimir's GitHub releases,
+verifies their checksums, and installs them atomically. Re-running only downloads tables whose
+contents have changed; if everything is current it reports "already up to date".
+
+### Hash-table cache directory
+
+Show the mimir hash-table cache directory (honoring `--hashtable-dir` / config / `MIMIR_DIR`):
 
 ```bash
 wadtools hashtable-dir

@@ -120,7 +120,10 @@ mod windows_impl {
 
     /// Registry path (under HKCU) of a menu's parent `shell\wadtools` node.
     fn menu_path(menu: &Menu) -> String {
-        format!("Software\\Classes\\{}\\shell\\{MENU_KEY}", menu.root.class())
+        format!(
+            "Software\\Classes\\{}\\shell\\{MENU_KEY}",
+            menu.root.class()
+        )
     }
 
     /// Registry path (under HKCU) of a sub-verb's node inside the cascading submenu.
