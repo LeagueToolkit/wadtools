@@ -247,6 +247,56 @@ pub enum Commands {
         #[arg(short = 's', long, default_value_t = true)]
         stats: bool,
     },
+    /// Rip the resolvable paths of a wad into a hashtable (CDragon `.txt` or Mimir `.lhdb`)
+    ///
+    /// Collects every chunk whose path can be resolved - names known to the shared
+    /// mimir cache plus names recovered by scanning the WAD's `.bin` files - and
+    /// writes them to a classic `<hex-hash> <path>` text file or a mimir `.lhdb`
+    /// hash table. Chunks that would only render as their 16-hex fallback are skipped.
+    #[command(visible_alias = "rip")]
+    Paths {
+        /// Path(s) to input wad file(s). Supports repeated -i flags, semicolon-delimited paths, or a folder
+        #[arg(short, long, num_args = 1..)]
+        input: Vec<String>,
+
+        /// Output file. Defaults to a sibling `<name>.paths.<ext>` next to the wad
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Output format (defaults to `txt`, or inferred from a `.lhdb` output extension)
+        #[arg(short = 'F', long, value_enum)]
+        format: Option<PathsFormat>,
+
+        /// Path to a supplemental hashtable file to resolve additional names
+        #[arg(short = 'H', long, visible_short_alias = 'd')]
+        hashtable: Option<String>,
+
+        /// Only include chunks whose resolved path matches this regex
+        #[arg(
+            short = 'x',
+            long,
+            value_name = "REGEX",
+            help = "Only include chunks whose resolved path matches this regex (case-insensitive by default; use (?-i) to disable)"
+        )]
+        pattern: Option<String>,
+
+        /// Invert the -x filter (exclude matching paths instead of including them)
+        #[arg(short = 'v', long = "filter-invert")]
+        filter_invert: bool,
+
+        /// Disable scanning .bin files to recover chunk names (enabled by default)
+        #[arg(long)]
+        no_bin_paths: bool,
+
+        /// Scan every chunk (not just known .bin files) for paths, recovering the most
+        /// names at the cost of an extra full decompression pass. Ignored with --no-bin-paths
+        #[arg(long)]
+        full_bin_scan: bool,
+
+        /// Show summary statistics after ripping: true/false (default: true)
+        #[arg(short = 's', long, value_name = "true|false", default_missing_value = "true", num_args = 0..=1, default_value_t = true)]
+        stats: bool,
+    },
     /// Download/update WAD hash tables into the mimir shared cache
     ///
     /// Fetches the latest published mimir `.lhdb` tables and installs them into the
@@ -417,6 +467,37 @@ fn run(args: Args) -> eyre::Result<()> {
                 )?;
             }
             Ok(())
+        }
+        Commands::Paths {
+            input,
+            output,
+            format,
+            hashtable,
+            pattern,
+            filter_invert,
+            no_bin_paths,
+            full_bin_scan,
+            stats,
+        } => {
+            let resolved = expand_wad_inputs(resolve_inputs(&input));
+            if resolved.is_empty() {
+                return Err(eyre::eyre!("No input files provided"));
+            }
+            let hashtable_dir = args.hashtable_dir.or_else(|| config.hashtable_dir.clone());
+            let ht = load_hashtable(hashtable_dir.as_deref(), hashtable.as_deref())?;
+            rip_paths(
+                PathsArgs {
+                    inputs: resolved,
+                    output,
+                    format,
+                    pattern,
+                    filter_invert,
+                    resolve_bin_paths: !no_bin_paths,
+                    full_bin_scan,
+                    show_stats: stats,
+                },
+                &ht,
+            )
         }
         Commands::DownloadHashes => download_hashes(DownloadHashesArgs {
             hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),

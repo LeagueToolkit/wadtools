@@ -10,6 +10,7 @@ Tooling for interacting with `.wad` files. This command-line utility provides a 
 
 - **Extract**: Extract contents from WAD files
 - **List**: Browse WAD file contents without extracting
+- **Paths**: Rip the resolvable paths of a WAD into a CDragon hashtable (`.txt`) or a Mimir hashtable (`.lhdb`)
 - **Diff**: Compare WAD files and show differences
 - **Windows Explorer integration**: drag-and-drop onto the executable and a right-click context menu (see below)
 
@@ -84,7 +85,8 @@ This adds a single **wadtools** submenu, pinned to the top of the right-click me
 
 - On `.wad` / `.wad.client` files:
   - **Extract** - extracts next to the file.
-  - **List contents** - prints the file listing.
+  - **CDragon Hashtable format (.txt)** - writes a sibling `<name>.paths.txt` hashtable of the WAD's resolvable paths.
+  - **[Mimir](https://github.com/LeagueToolkit/Mimir) Hashtable format (.lhdb)** - writes a sibling `<name>.paths.lhdb` mimir hash table of the same paths.
 - On folders:
   - **Extract all WADs** - extracts every WAD inside.
 
@@ -178,8 +180,8 @@ hashtable_dir = "C:/Users/you/AppData/Local/LeagueToolkit/hashes"
   - You can point to a different file via `--config <FILE>`.
   - Precedence: CLI flags override config. `--progress=true|false` persists back into the resolved config file.
 
-- **Hash tables (mimir)**:
-  - Hash → path resolution is served from the [mimir](https://github.com/LeagueToolkit/mimir)
+- **Hash tables (Mimir)**:
+  - Hash → path resolution is served from the [Mimir](https://github.com/LeagueToolkit/mimir)
     shared cache: a directory of compact, memory-mapped `.lhdb` tables plus a `manifest.json`.
     It replaces the old ~250 MB of CommunityDragon `hashes.*.txt` files - smaller on disk, no
     parse step at startup, and one copy shared across every LeagueToolkit tool on the machine.
@@ -290,6 +292,52 @@ Output formats:
 - `json`: structured JSON with full metadata
 - `csv`: spreadsheet-friendly format
 - `flat`: plain list of paths only, one per line
+
+### Paths
+
+Rips the resolvable paths of one or more WADs into a shareable hashtable - either the CDragon
+hashtable format (a `<hex-hash> <path>` text file, as in CommunityDragon's `hashes.*.txt`) or a
+[Mimir](https://github.com/LeagueToolkit/Mimir) `.lhdb` hash table. Alias: `rip`.
+
+"Resolvable" means every chunk whose hash we can attribute to a real path: names already known
+to the shared [Mimir](https://github.com/LeagueToolkit/Mimir) cache **plus** names recovered by scanning the WAD's `.bin` files (dependency
+links and string properties, the same recovery used during extraction). Chunks that would only
+render as their 16-character hex fallback are skipped, so the output is a clean, meaningful list.
+
+The `.lhdb` output is written in the Game-table configuration (64-bit XXH64 keys, case-insensitive),
+so it is a drop-in supplemental table for any LeagueToolkit tool that reads the mimir format, and it
+can be layered back in via `-H/--hashtable` (the `.txt` form works there too).
+
+Common flags:
+
+- `-i, --input <PATH>...`: path(s) to input WAD file(s) - supports repeated flags, semicolon-delimited paths, or a folder
+- `-o, --output <FILE>`: output file (defaults to a sibling `<name>.paths.<ext>` next to the WAD; multiple inputs collapse into `wadtools-paths.<ext>`)
+- `-F, --format <txt|lhdb>`: output format (defaults to `txt`, or inferred from a `.lhdb` output extension)
+- `-H, --hashtable <PATH>` (also `-d`): optional supplemental hashtable file to resolve additional names
+- `-x, --pattern <REGEX>`: only include chunks whose resolved path matches this regex
+- `-v, --filter-invert`: invert the `-x` filter (exclude matching paths instead of including them)
+- `--no-bin-paths`: disable scanning `.bin` files to recover names (enabled by default)
+- `--full-bin-scan`: scan every chunk (not just known `.bin` files), recovering the most names at the cost of a full decompression pass
+
+Basic examples:
+
+```bash
+# Rip a WAD's paths to a sibling Aatrox.wad.paths.txt
+wadtools paths -i Aatrox.wad.client
+wadtools rip -i Aatrox.wad.client  # using alias
+
+# Write a mimir .lhdb hash table instead (format inferred from the extension)
+wadtools paths -i Aatrox.wad.client -o Aatrox.lhdb
+
+# ...or force the format explicitly
+wadtools paths -i Aatrox.wad.client -F lhdb
+
+# Combine several WADs into one hashtable
+wadtools paths -i Aatrox.wad.client -i Ahri.wad.client -o champions.txt
+
+# Only rip character asset paths, using the deepest bin scan
+wadtools paths -i Aatrox.wad.client --full-bin-scan -x "^assets/characters/"
+```
 
 ### Diff
 

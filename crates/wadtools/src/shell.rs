@@ -70,7 +70,11 @@ mod windows_impl {
         key: &'static str,
         label: &'static str,
         command: &'static str,
+        /// Draw a separator line above this entry in the cascading menu.
+        separator_before: bool,
     }
+
+    const ECF_SEPARATORBEFORE: u32 = 0x20;
 
     /// A cascading `wadtools` submenu attached to one registry class. The parent verb is
     /// forced to the top of the context menu and holds the sub-verbs in a nested `shell` key.
@@ -98,12 +102,21 @@ mod windows_impl {
                     label: "Extract",
                     // Routes through the drag-and-drop path, which pauses only on error.
                     command: "\"{exe}\" \"%1\"",
+                    separator_before: false,
                 },
                 SubVerb {
-                    key: "list",
-                    label: "List contents",
-                    // Keep the console open so the listing can be read.
-                    command: "\"{exe}\" --pause always list -i \"%1\"",
+                    key: "ripcdragon",
+                    label: "Get CDragon Hashtable (.txt)",
+                    // Writes a sibling `<name>.paths.txt`; pause so the result can be read.
+                    command: "\"{exe}\" --pause always paths -i \"%1\"",
+                    separator_before: true,
+                },
+                SubVerb {
+                    key: "ripmimir",
+                    label: "Get Mimir Hashtable (.lhdb)",
+                    // Writes a sibling `<name>.paths.lhdb` mimir hash table.
+                    command: "\"{exe}\" --pause always paths -F lhdb -i \"%1\"",
+                    separator_before: false,
                 },
             ],
         },
@@ -114,6 +127,7 @@ mod windows_impl {
                 key: "extractfolder",
                 label: "Extract all WADs",
                 command: "\"{exe}\" \"%1\"",
+                separator_before: false,
             }],
         },
     ];
@@ -144,6 +158,15 @@ mod windows_impl {
 
         for menu in MENUS {
             let path = menu_path(menu);
+            // Clear any previous submenu subtree first so stale sub-verbs from an older
+            // install (e.g. the former "List contents") don't linger alongside the new ones.
+            match hkcu.delete_subkey_all(&path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    return Err(e).wrap_err_with(|| format!("failed to reset registry key {path}"))
+                }
+            }
             let (key, _) = hkcu
                 .create_subkey(&path)
                 .wrap_err_with(|| format!("failed to create registry key {path}"))?;
@@ -165,6 +188,9 @@ mod windows_impl {
                     .wrap_err_with(|| format!("failed to create registry key {sub_path}"))?;
                 sub_key.set_value("", &sub.label)?;
                 sub_key.set_value("Icon", &icon)?;
+                if sub.separator_before {
+                    sub_key.set_value("CommandFlags", &ECF_SEPARATORBEFORE)?;
+                }
 
                 let (command_key, _) = hkcu
                     .create_subkey(format!("{sub_path}\\command"))
