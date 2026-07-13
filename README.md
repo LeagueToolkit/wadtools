@@ -6,7 +6,7 @@
 </div>
 
 [![CI](https://github.com/LeagueToolkit/wadtools/actions/workflows/ci.yml/badge.svg)](https://github.com/LeagueToolkit/wadtools/actions/workflows/ci.yml)
-[![Release](https://github.com/LeagueToolkit/wadtools/actions/workflows/release.yml/badge.svg)](https://github.com/LeagueToolkit/wadtools/actions/workflows/release.yml)
+[![Release-plz PR](https://github.com/LeagueToolkit/wadtools/actions/workflows/release-plz.yml/badge.svg)](https://github.com/LeagueToolkit/wadtools/actions/workflows/release-plz.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](https://opensource.org/licenses/GPL-3.0)
 
 Tooling for interacting with `.wad` files. This command-line utility provides a set of tools for working with `.wad` archive files found in League of Legends.
