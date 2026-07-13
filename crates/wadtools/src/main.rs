@@ -15,14 +15,18 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{filter, fmt};
 use utils::config::{default_config_path, load_or_create_config, resolve_and_persist_progress};
-use utils::{default_hashtable_dir, resolve_inputs, WadHashtable};
+use utils::{default_hashtable_dir, expand_wad_inputs, resolve_inputs, WadHashtable};
 
 mod bin_scan;
 mod commands;
 mod extractor;
+mod launch;
+mod shell;
 mod utils;
 
 use commands::*;
+use launch::{maybe_pause, preprocess_args, PauseMode};
+use shell::ShellAction;
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
 pub enum VerbosityLevel {
@@ -75,6 +79,11 @@ struct Args {
     /// Overrides the default discovery directory and config value when provided
     #[arg(long, value_name = "DIR")]
     hashtable_dir: Option<String>,
+
+    /// Keep the console window open before exiting (used for drag-and-drop / context-menu
+    /// launches). Hidden from help as it is set automatically.
+    #[arg(long, value_enum, hide = true)]
+    pause: Option<PauseMode>,
 
     #[command(subcommand)]
     command: Commands,
@@ -242,10 +251,22 @@ pub enum Commands {
     /// Downloads hashes.game.txt and hashes.lcu.txt to the configured hashtable directory.
     #[command(visible_alias = "dl")]
     DownloadHashes,
+    /// Manage Windows Explorer integration (right-click context menu)
+    ///
+    /// Registers per-user context-menu entries so WAD files and folders can be extracted
+    /// or listed directly from Explorer. Windows only.
+    Shell {
+        #[command(subcommand)]
+        action: ShellAction,
+    },
 }
 
 fn main() -> eyre::Result<()> {
-    let args = match Args::try_parse() {
+    // Rewrite bare file/folder arguments (drag-and-drop onto the executable) into an
+    // equivalent `extract` invocation before clap sees them.
+    let argv = preprocess_args(std::env::args().collect());
+
+    let args = match Args::try_parse_from(&argv) {
         Ok(a) => a,
         Err(e) => {
             if matches!(
@@ -262,6 +283,15 @@ fn main() -> eyre::Result<()> {
         }
     };
 
+    // Captured before dispatch so the console can be held open even if the command fails.
+    let pause = args.pause.unwrap_or(PauseMode::Never);
+
+    let result = run(args);
+    maybe_pause(pause, result.is_err());
+    result
+}
+
+fn run(args: Args) -> eyre::Result<()> {
     let config_path = args
         .config
         .as_deref()
@@ -293,10 +323,12 @@ fn main() -> eyre::Result<()> {
                 print_supported_filters();
                 return Ok(());
             }
-            let resolved = resolve_inputs(&input);
+            
+            let resolved = expand_wad_inputs(resolve_inputs(&input));
             if resolved.is_empty() {
                 return Err(eyre::eyre!("No input files provided"));
             }
+            
             let hashtable_dir = args.hashtable_dir.or_else(|| config.hashtable_dir.clone());
             let ht = load_hashtable(hashtable_dir.as_deref(), hashtable.as_deref())?;
             let hash_filter = parse_hashes(hash)?;
@@ -387,6 +419,7 @@ fn main() -> eyre::Result<()> {
         Commands::DownloadHashes => download_hashes(DownloadHashesArgs {
             hashtable_dir: args.hashtable_dir.or_else(|| config.hashtable_dir.clone()),
         }),
+        Commands::Shell { action } => shell::run(&action),
     }
 }
 

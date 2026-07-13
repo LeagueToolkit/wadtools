@@ -17,6 +17,45 @@ pub fn resolve_inputs(inputs: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// Returns true if a file name looks like a WAD archive.
+///
+/// Matches both plain `.wad` files and target-suffixed variants such as
+/// `.wad.client` / `.wad.mobile` (any `*.wad.*`). Case-insensitive.
+pub fn is_wad_file(file_name: &str) -> bool {
+    let lower = file_name.to_ascii_lowercase();
+    lower.ends_with(".wad") || lower.contains(".wad.")
+}
+
+/// Expands directory inputs into the WAD files they contain.
+///
+/// Each entry is treated as follows:
+/// - a directory is recursively walked and every contained WAD file (see [`is_wad_file`])
+///   is emitted, sorted for deterministic ordering;
+/// - any other path (a file, or something that does not exist) is passed through unchanged
+///   so the caller still surfaces a sensible error when opening it.
+///
+/// This lets a folder dropped onto the executable (or picked via the Explorer folder
+/// context menu) expand to all the WADs inside it.
+pub fn expand_wad_inputs(inputs: Vec<String>) -> Vec<String> {
+    let mut out = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        if Utf8Path::new(&input).is_dir() {
+            let mut found: Vec<String> = walkdir::WalkDir::new(&input)
+                .into_iter()
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| entry.file_type().is_file())
+                .filter(|entry| entry.file_name().to_str().is_some_and(is_wad_file))
+                .filter_map(|entry| entry.path().to_str().map(|s| s.to_string()))
+                .collect();
+            found.sort();
+            out.extend(found);
+        } else {
+            out.push(input);
+        }
+    }
+    out
+}
+
 /// Creates a filter pattern from an optional regex string.
 /// Defaults to case-insensitive matching unless the user explicitly sets (?i) or (?-i).
 pub fn create_filter_pattern(pattern: Option<String>) -> eyre::Result<Option<Regex>> {
@@ -166,5 +205,50 @@ mod tests {
     fn empty_input() {
         let result = resolve_inputs(&s(&[]));
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn is_wad_file_matches_variants() {
+        assert!(is_wad_file("Aatrox.wad"));
+        assert!(is_wad_file("Aatrox.wad.client"));
+        assert!(is_wad_file("Aatrox.wad.mobile"));
+        assert!(is_wad_file("AATROX.WAD.CLIENT")); // case-insensitive
+    }
+
+    #[test]
+    fn is_wad_file_rejects_non_wad() {
+        assert!(!is_wad_file("foo.txt"));
+        assert!(!is_wad_file("wad")); // no extension
+        assert!(!is_wad_file("foo.wadx")); // not a wad extension
+        assert!(!is_wad_file("mywad")); // substring but not extension
+    }
+
+    #[test]
+    fn expand_passes_through_files() {
+        // Non-existent / non-directory paths are passed through unchanged.
+        assert_eq!(
+            expand_wad_inputs(s(&["a.wad.client", "b.wad"])),
+            vec!["a.wad.client", "b.wad"]
+        );
+    }
+
+    #[test]
+    fn expand_directory_collects_wads() {
+        let dir = std::env::temp_dir().join(format!("wadtools_expand_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("nested")).unwrap();
+        std::fs::write(dir.join("Aatrox.wad.client"), b"x").unwrap();
+        std::fs::write(dir.join("notes.txt"), b"x").unwrap();
+        std::fs::write(dir.join("nested").join("Ahri.wad"), b"x").unwrap();
+
+        let dir_str = dir.to_str().unwrap().to_string();
+        let result = expand_wad_inputs(vec![dir_str]);
+
+        assert_eq!(result.len(), 2, "expected two wad files, got {result:?}");
+        assert!(result.iter().any(|p| p.ends_with("Aatrox.wad.client")));
+        assert!(result.iter().any(|p| p.ends_with("Ahri.wad")));
+        assert!(!result.iter().any(|p| p.ends_with("notes.txt")));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

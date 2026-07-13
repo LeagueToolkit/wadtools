@@ -11,6 +11,7 @@ Tooling for interacting with `.wad` files. This command-line utility provides a 
 - **Extract**: Extract contents from WAD files
 - **List**: Browse WAD file contents without extracting
 - **Diff**: Compare WAD files and show differences
+- **Windows Explorer integration**: drag-and-drop onto the executable and a right-click context menu (see below)
 
 ## Installation
 
@@ -59,6 +60,44 @@ cargo build --release
 
 # The binary will be available in target/release/
 ```
+
+## Windows Explorer integration
+
+On Windows, wadtools can be driven straight from Explorer — no terminal required.
+
+### Drag-and-drop
+
+Drag one or more `.wad` / `.wad.client` files (or a folder containing them) onto `wadtools.exe`.
+Each WAD is extracted into a sibling folder named after the file (e.g. `Aatrox.wad.client` →
+`Aatrox.wad\`), exactly as if you ran `wadtools extract -i <file>`. The window closes on success
+and stays open only if something went wrong, so you can read the error.
+
+### Right-click context menu
+
+Register the context-menu entries (per-user, no administrator rights needed):
+
+```powershell
+wadtools shell install
+```
+
+This adds a single **wadtools** submenu, pinned to the top of the right-click menu, containing:
+
+- On `.wad` / `.wad.client` files:
+  - **Extract** — extracts next to the file.
+  - **List contents** — prints the file listing.
+- On folders:
+  - **Extract all WADs** — extracts every WAD inside.
+
+Manage the integration with:
+
+```powershell
+wadtools shell status      # show what is installed and where it points
+wadtools shell uninstall   # remove the context-menu entries
+```
+
+The Windows quick installer asks whether to register the context menu during installation.
+Pass `-ShellIntegration` to register it without prompting, or `-NoShellIntegration` to skip it;
+you can always add or remove it later with `wadtools shell install` / `wadtools shell uninstall`.
 
 ## Usage
 

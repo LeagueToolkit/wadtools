@@ -1,6 +1,10 @@
 param(
     [string] $InstallDir,
-    [string] $Repo = 'LeagueToolkit/wadtools'
+    [string] $Repo = 'LeagueToolkit/wadtools',
+    # Register the Explorer right-click context menu without prompting.
+    [switch] $ShellIntegration,
+    # Skip the Explorer context menu (and the prompt) entirely.
+    [switch] $NoShellIntegration
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,6 +12,22 @@ $ErrorActionPreference = 'Stop'
 function Write-Info {
     param([string] $Message)
     Write-Host "[wadtools-installer] $Message"
+}
+
+# Decides whether to register the Explorer context menu.
+# Honors the -ShellIntegration / -NoShellIntegration switches; otherwise asks the user
+# when running interactively, and defaults to enabling it in non-interactive installs.
+function Confirm-ShellIntegration {
+    if ($NoShellIntegration) { return $false }
+    if ($ShellIntegration) { return $true }
+
+    if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+        $answer = Read-Host 'Add wadtools to the Windows Explorer right-click menu? [Y/n]'
+        return ($answer -notmatch '^(n|no)$')
+    }
+
+    # Non-interactive (e.g. automated install): default to enabling.
+    return $true
 }
 
 function Ensure-Tls12 {
@@ -139,6 +159,18 @@ function Main {
 
     Add-PathForCurrentUser -Dir $InstallDir
     Write-Info "Added to user PATH (if not already present): $InstallDir"
+
+    # Optionally register the Explorer right-click context menu (per-user, best-effort).
+    if (Confirm-ShellIntegration) {
+        try {
+            & $exePath shell install | Out-Null
+            Write-Info "Registered Explorer context-menu integration (run 'wadtools shell uninstall' to remove)"
+        } catch {
+            Write-Info "Skipped Explorer context-menu registration: $($_.Exception.Message)"
+        }
+    } else {
+        Write-Info "Skipped Explorer context-menu registration (enable later with 'wadtools shell install')"
+    }
 
     Write-Info "Installed: $exePath"
     try {
