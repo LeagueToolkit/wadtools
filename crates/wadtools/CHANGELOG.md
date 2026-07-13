@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.7](https://github.com/LeagueToolkit/wadtools/compare/v0.5.6...v0.5.7) - 2026-07-13
+
+### Added
+
+- add paths command
+- add project icon
+- implement mimir hashtables
+- windows explorer integration
+- bin scan extract
+
 ### Changed
 
 - Hash → path resolution now uses the [mimir](https://github.com/LeagueToolkit/mimir) shared
