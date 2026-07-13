@@ -1,10 +1,13 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use color_eyre::owo_colors::OwoColorize;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
+use std::sync::Arc;
 
 use league_toolkit::{file::LeagueFileKind, wad::Wad};
 
 use crate::{
+    bin_scan::scan_wad_bin_paths,
     extractor::Extractor,
     utils::{create_filter_pattern, format_size, WadHashtable},
 };
@@ -19,6 +22,29 @@ pub struct ExtractArgs {
     pub filter_invert: bool,
     pub overwrite: bool,
     pub show_stats: bool,
+    pub resolve_bin_paths: bool,
+    pub full_bin_scan: bool,
+}
+
+/// Scan the WAD's `.bin` files for path strings so otherwise-anonymous chunks can be
+/// extracted under their real names.
+fn discover_bin_paths(
+    wad: &mut Wad<File>,
+    hashtable: &WadHashtable,
+    full_bin_scan: bool,
+) -> HashMap<u64, Arc<str>> {
+    if full_bin_scan {
+        tracing::info!("scanning all chunks for bin paths (full mode)");
+    }
+
+    let chunk_hashes: HashSet<u64> = wad.chunks().iter().map(|c| c.path_hash).collect();
+    let discovered = scan_wad_bin_paths(wad, hashtable, &chunk_hashes, full_bin_scan);
+    if !discovered.is_empty() {
+        tracing::info!("recovered {} chunk name(s) from bin files", discovered.len());
+    
+    }
+    
+    discovered
 }
 
 pub fn extract(args: ExtractArgs, hashtable: &WadHashtable) -> eyre::Result<()> {
@@ -26,7 +52,14 @@ pub fn extract(args: ExtractArgs, hashtable: &WadHashtable) -> eyre::Result<()> 
 
     let mut wad = Wad::mount(source)?;
 
+    let discovered = match args.resolve_bin_paths {
+        true => discover_bin_paths(&mut wad, hashtable, args.full_bin_scan),
+        false => HashMap::new(),
+    };
+    let recovered = discovered.len();
+
     let mut extractor = Extractor::new(&mut wad, hashtable);
+    extractor.set_discovered(discovered);
 
     let filter_pattern = create_filter_pattern(args.pattern)?;
 
@@ -64,6 +97,13 @@ pub fn extract(args: ExtractArgs, hashtable: &WadHashtable) -> eyre::Result<()> 
             "Skipped".bright_cyan().bold(),
             stats.skipped_existing.to_string().bright_yellow()
         );
+        if recovered > 0 {
+            println!(
+                "{}: {} names from bins",
+                "Recovered".bright_cyan().bold(),
+                recovered.to_string().bright_green()
+            );
+        }
         if !stats.by_type.is_empty() {
             println!();
             println!("{}:", "By type".bright_cyan().bold());

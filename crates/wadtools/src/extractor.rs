@@ -14,7 +14,7 @@ use std::{
     io::{self, Write},
     sync::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
-        mpsc,
+        mpsc, Arc,
     },
 };
 use tracing_indicatif::span_ext::IndicatifSpanExt;
@@ -38,6 +38,9 @@ enum ChunkResult {
 pub struct Extractor<'a> {
     wad: &'a mut Wad<File>,
     hashtable: &'a WadHashtable,
+    /// Names recovered from `.bin` files for this WAD, consulted before the shared
+    /// hashtable. Gap-fill only — never contains a hash the hashtable already resolves.
+    discovered: HashMap<u64, Arc<str>>,
     filter_pattern: Option<Regex>,
     hash_filter: Option<Vec<u64>>,
     filter_invert: bool,
@@ -48,10 +51,24 @@ impl<'a> Extractor<'a> {
         Self {
             wad,
             hashtable,
+            discovered: HashMap::new(),
             filter_pattern: None,
             hash_filter: None,
             filter_invert: false,
         }
+    }
+
+    pub fn set_discovered(&mut self, discovered: HashMap<u64, Arc<str>>) {
+        self.discovered = discovered;
+    }
+
+    /// Resolves a chunk's path, preferring names recovered from bins over the shared
+    /// hashtable (which falls back to a hex string when the hash is unknown).
+    fn resolve_path(&self, path_hash: u64) -> Arc<str> {
+        self.discovered
+            .get(&path_hash)
+            .cloned()
+            .unwrap_or_else(|| self.hashtable.resolve_path(path_hash))
     }
 
     pub fn set_filter_pattern(&mut self, filter_pattern: Option<Regex>) {
@@ -167,7 +184,7 @@ impl<'a> Extractor<'a> {
                     continue;
                 }
 
-                let chunk_path_str = self.hashtable.resolve_path(chunk.path_hash);
+                let chunk_path_str = self.resolve_path(chunk.path_hash);
 
                 span.pb_set_message(&truncate_middle(chunk_path_str.as_ref(), MAX_LOG_PATH_LEN));
 

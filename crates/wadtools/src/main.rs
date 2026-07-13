@@ -17,6 +17,7 @@ use tracing_subscriber::{filter, fmt};
 use utils::config::{default_config_path, load_or_create_config, resolve_and_persist_progress};
 use utils::{default_hashtable_dir, resolve_inputs, WadHashtable};
 
+mod bin_scan;
 mod commands;
 mod extractor;
 mod utils;
@@ -134,6 +135,15 @@ pub enum Commands {
         /// Show summary statistics after extraction: true/false (default: true). Example: --stats=false
         #[arg(short = 's', long, value_name = "true|false", default_missing_value = "true", num_args = 0..=1, default_value_t = true)]
         stats: bool,
+
+        /// Disable scanning .bin files to recover chunk names before extracting (enabled by default)
+        #[arg(long)]
+        no_bin_paths: bool,
+
+        /// Scan every chunk (not just known .bin files) for paths, recovering the most
+        /// names at the cost of an extra full decompression pass. Ignored with --no-bin-paths
+        #[arg(long)]
+        full_bin_scan: bool,
     },
     /// Compare two wad files
     ///
@@ -276,6 +286,8 @@ fn main() -> eyre::Result<()> {
             list_filters,
             overwrite,
             stats,
+            no_bin_paths,
+            full_bin_scan,
         } => {
             if list_filters {
                 print_supported_filters();
@@ -299,6 +311,8 @@ fn main() -> eyre::Result<()> {
                         filter_invert,
                         overwrite,
                         show_stats: stats,
+                        resolve_bin_paths: !no_bin_paths,
+                        full_bin_scan,
                     },
                     &ht,
                 )?;
