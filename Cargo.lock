@@ -1888,6 +1888,7 @@ dependencies = [
  "tracing-subscriber",
  "ureq",
  "walkdir",
+ "xxhash-rust",
 ]
 
 [[package]]
