@@ -1,4 +1,9 @@
-# wadtools
+<div align="center">
+  <a href="https://github.com/LeagueToolkit">
+    <img src="crates/wadtools/assets/wadtools.png" alt="wadtools logo" width="96" height="96">
+  </a>
+  <h1>wadtools</h1>
+</div>
 
 [![CI](https://github.com/LeagueToolkit/wadtools/actions/workflows/ci.yml/badge.svg)](https://github.com/LeagueToolkit/wadtools/actions/workflows/ci.yml)
 [![Release](https://github.com/LeagueToolkit/wadtools/actions/workflows/release.yml/badge.svg)](https://github.com/LeagueToolkit/wadtools/actions/workflows/release.yml)
