@@ -5,12 +5,12 @@ use std::{
 
 use colored::Colorize;
 use fancy_regex::Regex;
-use league_toolkit::wad::{Wad, WadChunk};
+use league_toolkit::wad::{Wad, WadChunk, WadHash};
 use serde::Serialize;
 use std::borrow::Cow;
 
 use crate::{
-    extractor::{should_skip_hash, should_skip_pattern},
+    filters::{should_skip_hash, should_skip_pattern},
     utils::{format_chunk_path_hash, format_size, WadHashtable},
 };
 
@@ -46,7 +46,7 @@ pub struct DiffArgs {
     pub target: String,
     pub output: Option<String>,
     pub pattern: Option<String>,
-    pub hash: Option<Vec<u64>>,
+    pub hash: Option<Vec<WadHash>>,
     pub filter_invert: bool,
 }
 
@@ -85,7 +85,7 @@ pub fn diff(args: DiffArgs, hashtable: &WadHashtable) -> eyre::Result<()> {
 }
 
 /// Returns the primary path hash for a diff entry (used for filtering).
-fn diff_primary_path_hash(diff: &ChunkDiff) -> u64 {
+fn diff_primary_path_hash(diff: &ChunkDiff) -> WadHash {
     match diff {
         ChunkDiff::New(chunk) => chunk.path_hash,
         ChunkDiff::Removed(chunk) => chunk.path_hash,
@@ -109,7 +109,7 @@ fn should_skip_diff(
     diff: &ChunkDiff,
     hashtable: &WadHashtable,
     filter_pattern: Option<&Regex>,
-    hash_filter: Option<&[u64]>,
+    hash_filter: Option<&[WadHash]>,
     filter_invert: bool,
 ) -> bool {
     let path_hash = diff_primary_path_hash(diff);
@@ -127,7 +127,7 @@ fn print_diffs(
     diffs: &[ChunkDiff],
     hashtable: &WadHashtable,
     filter_pattern: Option<&Regex>,
-    hash_filter: Option<&[u64]>,
+    hash_filter: Option<&[WadHash]>,
     filter_invert: bool,
 ) {
     // Sort by resolved path
@@ -284,7 +284,7 @@ fn write_diffs_to_csv(
     hashtable: &WadHashtable,
     output_path: &str,
     filter_pattern: Option<&Regex>,
-    hash_filter: Option<&[u64]>,
+    hash_filter: Option<&[WadHash]>,
     filter_invert: bool,
 ) -> eyre::Result<()> {
     tracing::info!("Writing diffs to CSV file: {}", output_path.bright_cyan());
@@ -315,7 +315,7 @@ fn create_csv_records(
     diffs: &[ChunkDiff],
     hashtable: &WadHashtable,
     filter_pattern: Option<&Regex>,
-    hash_filter: Option<&[u64]>,
+    hash_filter: Option<&[WadHash]>,
     filter_invert: bool,
 ) -> Vec<ChunkDiffCsvRecord> {
     let mut records = Vec::<ChunkDiffCsvRecord>::new();

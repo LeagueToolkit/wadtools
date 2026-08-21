@@ -1,11 +1,14 @@
 use camino::Utf8Path;
 use color_eyre::owo_colors::OwoColorize;
-use league_toolkit::{file::LeagueFileKind, wad::Wad};
+use league_toolkit::{
+    file::LeagueFileKind,
+    wad::{Wad, WadHash},
+};
 use serde::Serialize;
 use std::fs::File;
 
 use crate::{
-    extractor::{should_skip_hash, should_skip_pattern, should_skip_type},
+    filters::{should_skip_hash, should_skip_pattern, should_skip_type},
     utils::{create_filter_pattern, format_chunk_path_hash, format_size, WadHashtable},
 };
 
@@ -26,7 +29,7 @@ pub struct ListArgs {
     pub input: String,
     pub filter_type: Option<Vec<LeagueFileKind>>,
     pub pattern: Option<String>,
-    pub hash: Option<Vec<u64>>,
+    pub hash: Option<Vec<WadHash>>,
     pub filter_invert: bool,
     pub format: ListOutputFormat,
     pub show_stats: bool,
@@ -66,7 +69,7 @@ pub fn list(args: ListArgs, hashtable: &WadHashtable) -> eyre::Result<()> {
     let mut total_uncompressed: u64 = 0;
 
     let chunks = wad.chunks().as_slice();
-    let path_hashes: Vec<u64> = chunks.iter().map(|chunk| chunk.path_hash).collect();
+    let path_hashes: Vec<u64> = chunks.iter().map(|chunk| chunk.path_hash.0).collect();
     let resolved_paths = hashtable.resolve_batch(&path_hashes);
 
     for (chunk, path_str) in chunks.iter().zip(&resolved_paths) {

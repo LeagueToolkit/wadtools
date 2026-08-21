@@ -8,7 +8,9 @@ clap = { version = "4.5.20", features = ["derive"] }
 eyre = "0.6.12"
 toml = "0.8.19"
 fancy-regex = "0.16.2"
-league-toolkit = { version = "0.2.17", features = ["serde"] }
+# Pinned to a commit of the `feat/wad-extractor` branch (LeagueToolkit/league-toolkit#183)
+# until `ltk_wad` 0.4 ships on crates.io. The extractor and the bin-name recovery live there now.
+league-toolkit = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "22d1990421e980107cb8a436a3206a7a4b47b418", features = ["serde"] }
 color-eyre = "0.6"
 tracing = "0.1.41"
 parking_lot = "0.12.3"
@@ -26,9 +28,6 @@ directories-next = "2.0"
 dirs-next = "2.0"
 camino = "1.1"
 convert_case = "0.9.0"
-rayon = "1.10"
-dashmap = "6"
-xxhash-rust = { version = "0.8", features = ["xxh64"] }
 # `download-hashes` streams release assets through our own progress-bar `Fetch`
 # (mimir's bundled `UreqFetch` buffers the whole body, so it can't drive a bar).
 ureq = "2.12"

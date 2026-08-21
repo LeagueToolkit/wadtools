@@ -4,9 +4,9 @@
 //!
 //! "Resolvable" means every chunk whose hash we can attribute to a real path -
 //! names already known to the shared mimir cache *plus* names recovered by
-//! scanning the WAD's `.bin` files (dependency links and string properties, see
-//! [`crate::bin_scan`]). Chunks that would only render as their 16-hex fallback are
-//! skipped, so the output is a clean, human-meaningful path list.
+//! scanning the WAD's `.bin` files (see [`NameRecovery`]). Chunks that would only
+//! render as their 16-hex fallback are skipped, so the output is a clean,
+//! human-meaningful path list.
 //!
 //! The `.lhdb` output is written in the Game-table configuration (64-bit XXH64 keys,
 //! case-insensitive), so it is a drop-in supplemental table for any LeagueToolkit
@@ -15,17 +15,15 @@
 use camino::Utf8Path;
 use color_eyre::owo_colors::OwoColorize;
 use eyre::Context;
-use league_toolkit::wad::Wad;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use league_toolkit::wad::{NameRecovery, PathResolver, RecoveredNames, Wad, WadHash};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::sync::Arc;
 
 use ltk_hashdb::{Casing, Compression, HashDbWriter, HashKind, KeyWidth};
 
 use crate::{
-    bin_scan::scan_wad_bin_paths,
-    extractor::should_skip_pattern,
+    filters::should_skip_pattern,
     utils::{create_filter_pattern, format_chunk_path_hash, WadHashtable},
 };
 
@@ -58,8 +56,6 @@ pub struct PathsArgs {
     pub filter_invert: bool,
     /// Scan `.bin` files to recover otherwise-anonymous chunk names (default: true).
     pub resolve_bin_paths: bool,
-    /// Decompress every chunk to magic-detect bins, recovering the most names.
-    pub full_bin_scan: bool,
     pub show_stats: bool,
 }
 
@@ -73,7 +69,7 @@ pub fn rip_paths(args: PathsArgs, hashtable: &WadHashtable) -> eyre::Result<()> 
 
     // Deduplicated across every input WAD; keyed by chunk hash so a path shared by
     // multiple WADs is written once.
-    let mut collected: BTreeMap<u64, Arc<str>> = BTreeMap::new();
+    let mut collected: BTreeMap<WadHash, String> = BTreeMap::new();
     let mut recovered_total = 0usize;
 
     for input in &args.inputs {
@@ -81,23 +77,20 @@ pub fn rip_paths(args: PathsArgs, hashtable: &WadHashtable) -> eyre::Result<()> 
         let mut wad =
             Wad::mount(source).wrap_err_with(|| format!("failed to mount WAD '{input}'"))?;
 
-        let chunk_hashes: HashSet<u64> = wad.chunks().iter().map(|c| c.path_hash).collect();
-
-        let discovered = if args.resolve_bin_paths {
-            scan_wad_bin_paths(&mut wad, hashtable, &chunk_hashes, args.full_bin_scan)
+        let recovered = if args.resolve_bin_paths {
+            NameRecovery::new()
+                .run(&mut wad, hashtable)
+                .wrap_err_with(|| format!("failed to scan the bins of WAD '{input}'"))?
         } else {
-            HashMap::new()
+            RecoveredNames::default()
         };
-        recovered_total += discovered.len();
+        recovered_total += recovered.len();
 
-        for &hash in &chunk_hashes {
-            // Prefer bin-recovered names, then fall back to the shared cache. A chunk
-            // that neither source resolves would only be the 16-hex fallback - skip it.
-            let path: Arc<str> = if let Some(path) = discovered.get(&hash) {
-                path.clone()
-            } else if hashtable.contains(hash) {
-                Arc::from(hashtable.resolve_path(hash).as_ref())
-            } else {
+        // Bin-recovered names first, then the shared cache. A chunk that neither
+        // source resolves would only be the 16-hex fallback - skip it.
+        let resolver = recovered.over(hashtable);
+        for chunk in wad.chunks() {
+            let Some(path) = resolver.resolve(chunk.path_hash) else {
                 continue;
             };
 
@@ -105,7 +98,9 @@ pub fn rip_paths(args: PathsArgs, hashtable: &WadHashtable) -> eyre::Result<()> 
                 continue;
             }
 
-            collected.entry(hash).or_insert(path);
+            collected
+                .entry(chunk.path_hash)
+                .or_insert_with(|| path.into_owned());
         }
     }
 
@@ -179,8 +174,8 @@ fn resolve_output_path(
 
 /// Writes the CDragon hashtable format (`<hex-hash> <path>` text), sorted by path
 /// for readable, deterministic diffs.
-fn write_txt(output: &str, collected: &BTreeMap<u64, Arc<str>>) -> eyre::Result<()> {
-    let mut entries: Vec<(&u64, &Arc<str>)> = collected.iter().collect();
+fn write_txt(output: &str, collected: &BTreeMap<WadHash, String>) -> eyre::Result<()> {
+    let mut entries: Vec<(&WadHash, &String)> = collected.iter().collect();
     entries.sort_by(|a, b| a.1.cmp(b.1));
 
     let file = File::create(output)
@@ -197,13 +192,13 @@ fn write_txt(output: &str, collected: &BTreeMap<u64, Arc<str>>) -> eyre::Result<
 /// cleanly on top of the shared cache (XXH64 keys over the lowercased path).
 fn write_lhdb(
     output: &str,
-    collected: &BTreeMap<u64, Arc<str>>,
+    collected: &BTreeMap<WadHash, String>,
 ) -> eyre::Result<ltk_hashdb::BuildStats> {
     let mut writer = HashDbWriter::new(KeyWidth::U64, Compression::default())
         .hash_kind(HashKind::Xxh64)
         .casing(Casing::Insensitive);
     for (&hash, path) in collected {
-        writer.insert(hash, path);
+        writer.insert(hash.0, path);
     }
 
     let file = File::create(output)
@@ -217,7 +212,7 @@ fn write_lhdb(
 fn print_stats(
     output: &str,
     format: PathsFormat,
-    collected: &BTreeMap<u64, Arc<str>>,
+    collected: &BTreeMap<WadHash, String>,
     recovered_total: usize,
     build_stats: Option<ltk_hashdb::BuildStats>,
 ) {
@@ -254,8 +249,8 @@ fn print_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bin_scan::hash_wad_path;
-    use league_toolkit::meta::BinTree;
+    use league_toolkit::hash::Hash as _;
+    use league_toolkit::meta::{property::NoMeta, Bin};
     use league_toolkit::wad::{WadBuilder, WadChunkBuilder};
     use ltk_hashdb::HashDb;
     use std::io::{Cursor, Write};
@@ -309,9 +304,9 @@ mod tests {
     struct Fixture {
         wad_path: std::path::PathBuf,
         hashtable: WadHashtable,
-        bin_hash: u64,
-        asset_hash: u64,
-        unknown_hash: u64,
+        bin_hash: WadHash,
+        asset_hash: WadHash,
+        unknown_hash: WadHash,
     }
 
     fn build_fixture(tag: &str) -> Fixture {
@@ -321,15 +316,15 @@ mod tests {
 
         // The known bin links to the anonymous asset, so a scan recovers its name.
         let bin_bytes = {
-            let tree = BinTree::builder().dependency(asset_path).build();
+            let tree = Bin::<NoMeta>::builder().dependency(asset_path).build();
             let mut buffer = Cursor::new(Vec::new());
             tree.to_writer(&mut buffer).unwrap();
             buffer.into_inner()
         };
 
-        let bin_hash = hash_wad_path(bin_path);
-        let asset_hash = hash_wad_path(asset_path);
-        let unknown_hash = hash_wad_path(unknown_path);
+        let bin_hash = WadHash::hash_str(bin_path);
+        let asset_hash = WadHash::hash_str(asset_path);
+        let unknown_hash = WadHash::hash_str(unknown_path);
 
         let wad_path = std::env::temp_dir().join(format!(
             "wadtools_paths_{tag}_{}.wad.client",
@@ -373,7 +368,6 @@ mod tests {
             pattern: None,
             filter_invert: false,
             resolve_bin_paths: true,
-            full_bin_scan: false,
             show_stats: false,
         }
     }
@@ -431,17 +425,17 @@ mod tests {
         // by the same XXH64 chunk hashes the WAD keys on.
         let db = HashDb::open(&out).unwrap();
         assert_eq!(
-            db.get(fx.bin_hash).as_deref(),
+            db.get(fx.bin_hash.0).as_deref(),
             Some("data/test.bin"),
             "bin path not resolvable from the .lhdb"
         );
         assert_eq!(
-            db.get(fx.asset_hash).as_deref(),
+            db.get(fx.asset_hash.0).as_deref(),
             Some("assets/characters/foo/recovered.dds"),
             "recovered asset not resolvable from the .lhdb"
         );
         assert!(
-            !db.contains(fx.unknown_hash),
+            !db.contains(fx.unknown_hash.0),
             "hex-only orphan should not be present in the .lhdb"
         );
 

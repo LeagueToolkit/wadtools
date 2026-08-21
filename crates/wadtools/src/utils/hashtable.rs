@@ -1,4 +1,5 @@
 use color_eyre::eyre::{self, eyre, Result};
+use league_toolkit::wad::{PathResolver, WadHash};
 use ltk_hashdb::LayeredHashDb;
 use ltk_mimir_cache::{HashStore, Table};
 use std::{
@@ -14,12 +15,13 @@ use super::format_chunk_path_hash;
 ///
 /// A thin wrapper over mimir's [`LayeredHashDb`]: the Game and Lcu `.lhdb` base
 /// tables (opened lazily via `mmap` from the shared cache) sit under an in-memory
-/// overlay for supplemental names - a user-provided `-H` text file or names
-/// recovered at runtime. Lookups check the overlay first, then each base table.
+/// overlay for supplemental names from a user-provided `-H` text file. Lookups
+/// check the overlay first, then each base table.
 ///
 /// The only League-domain policy layered on top of mimir is the **hex fallback**:
 /// mimir returns `Option`, and a total miss is rendered as the 16-hex form of the
-/// hash here (mimir never invents hex strings).
+/// hash here (mimir never invents hex strings). As a [`PathResolver`] the table
+/// answers `None` instead, and `ltk_wad` applies the same fallback itself.
 #[derive(Default)]
 pub struct WadHashtable(LayeredHashDb);
 
@@ -55,30 +57,28 @@ impl WadHashtable {
 
     /// Resolves a chunk path hash to a readable path, falling back to the 16-hex
     /// representation when unknown.
-    pub fn resolve_path(&self, path_hash: u64) -> Cow<'_, str> {
+    pub fn resolve_path(&self, path_hash: WadHash) -> Cow<'_, str> {
         self.0
-            .get(path_hash)
+            .get(path_hash.0)
             .unwrap_or_else(|| Cow::Owned(format_chunk_path_hash(path_hash)))
     }
 
     /// Resolves many chunk path hashes at once, in input order.
-    #[allow(dead_code)]
+    ///
+    /// Takes the raw hashes, as mimir's bulk lookup does.
     pub fn resolve_batch<'a>(&'a self, path_hashes: &'a [u64]) -> Vec<Cow<'a, str>> {
         self.0
             .get_batch(path_hashes)
-            .map(|(hash, path)| path.unwrap_or_else(|| Cow::Owned(format_chunk_path_hash(hash))))
+            .map(|(hash, path)| {
+                path.unwrap_or_else(|| Cow::Owned(format_chunk_path_hash(WadHash(hash))))
+            })
             .collect()
-    }
-
-    /// Returns true if any base table or the overlay knows this hash.
-    pub fn contains(&self, path_hash: u64) -> bool {
-        self.0.contains(path_hash)
     }
 
     /// Inserts a supplemental `hash -> path` mapping into the overlay.
     #[allow(dead_code)]
-    pub fn insert(&mut self, path_hash: u64, path: impl Into<Box<str>>) {
-        self.0.insert(path_hash, path);
+    pub fn insert(&mut self, path_hash: WadHash, path: impl Into<Box<str>>) {
+        self.0.insert(path_hash.0, path);
     }
 
     /// Loads supplemental `<hex-hash> <path>` lines from a text file into the
@@ -99,5 +99,15 @@ impl WadHashtable {
         }
 
         Ok(())
+    }
+}
+
+impl PathResolver for WadHashtable {
+    fn resolve(&self, path_hash: WadHash) -> Option<Cow<'_, str>> {
+        self.0.get(path_hash.0)
+    }
+
+    fn is_known(&self, path_hash: WadHash) -> bool {
+        self.0.contains(path_hash.0)
     }
 }

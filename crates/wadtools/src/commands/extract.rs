@@ -1,138 +1,177 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use color_eyre::owo_colors::OwoColorize;
-use std::collections::{HashMap, HashSet};
+use convert_case::{Case, Casing};
+use fancy_regex::Regex;
 use std::fs::File;
-use std::sync::Arc;
 
-use league_toolkit::{file::LeagueFileKind, wad::Wad};
+use league_toolkit::{
+    file::LeagueFileKind,
+    wad::{ExistingFilePolicy, ExtractReport, Wad, WadExtractor, WadHash},
+};
+use tracing_indicatif::span_ext::IndicatifSpanExt;
+use tracing_indicatif::style::ProgressStyle;
 
 use crate::{
-    bin_scan::scan_wad_bin_paths,
-    extractor::Extractor,
-    utils::{create_filter_pattern, format_size, WadHashtable},
+    filters::{should_skip_hash, should_skip_pattern, should_skip_type},
+    utils::{create_filter_pattern, format_size, truncate_middle, WadHashtable},
 };
-use convert_case::{Case, Casing};
+
+const MAX_LOG_PATH_LEN: usize = 120;
 
 pub struct ExtractArgs {
     pub input: String,
     pub output: Option<String>,
     pub filter_type: Option<Vec<LeagueFileKind>>,
     pub pattern: Option<String>,
-    pub hash: Option<Vec<u64>>,
+    pub hash: Option<Vec<WadHash>>,
     pub filter_invert: bool,
     pub overwrite: bool,
     pub show_stats: bool,
     pub resolve_bin_paths: bool,
-    pub full_bin_scan: bool,
 }
 
-/// Scan the WAD's `.bin` files for path strings so otherwise-anonymous chunks can be
-/// extracted under their real names.
-fn discover_bin_paths(
-    wad: &mut Wad<File>,
-    hashtable: &WadHashtable,
-    full_bin_scan: bool,
-) -> HashMap<u64, Arc<str>> {
-    if full_bin_scan {
-        tracing::info!("scanning all chunks for bin paths (full mode)");
-    }
+pub fn extract(mut args: ExtractArgs, hashtable: &WadHashtable) -> eyre::Result<()> {
+    let source = File::open(&args.input)?;
+    let mut wad = Wad::mount(source)?;
 
-    let chunk_hashes: HashSet<u64> = wad.chunks().iter().map(|c| c.path_hash).collect();
-    let discovered = scan_wad_bin_paths(wad, hashtable, &chunk_hashes, full_bin_scan);
-    if !discovered.is_empty() {
+    let filter_pattern = create_filter_pattern(args.pattern.take())?;
+    let output_dir = resolve_output_dir(&args.input, args.output.as_deref());
+
+    let report = run(
+        &mut wad,
+        hashtable,
+        &args,
+        filter_pattern.as_ref(),
+        &output_dir,
+    )?;
+
+    if !report.recovered.is_empty() {
         tracing::info!(
             "recovered {} chunk name(s) from bin files",
-            discovered.len()
+            report.recovered.len()
         );
     }
 
-    discovered
+    if args.show_stats {
+        print_stats(&args.input, &report);
+    } else if report.skipped_existing > 0 {
+        tracing::info!(
+            "extracted {} chunks, skipped {} existing :)",
+            report.extracted,
+            report.skipped_existing
+        );
+    } else {
+        tracing::info!("extracted {} chunks :)", report.extracted);
+    }
+
+    Ok(())
 }
 
-pub fn extract(args: ExtractArgs, hashtable: &WadHashtable) -> eyre::Result<()> {
-    let source = File::open(&args.input)?;
+/// Runs the extraction under its progress span, so the bar is gone before the
+/// summary prints.
+fn run(
+    wad: &mut Wad<File>,
+    hashtable: &WadHashtable,
+    args: &ExtractArgs,
+    filter_pattern: Option<&Regex>,
+    output_dir: &Utf8Path,
+) -> eyre::Result<ExtractReport> {
+    let filter_invert = args.filter_invert;
 
-    let mut wad = Wad::mount(source)?;
+    // The hash filter is the cheapest check, so it picks the chunks before anything is read.
+    let selected: Vec<WadHash> = wad
+        .chunks()
+        .iter()
+        .map(|chunk| chunk.path_hash)
+        .filter(|&path_hash| !should_skip_hash(path_hash, args.hash.as_deref(), filter_invert))
+        .collect();
 
-    let discovered = match args.resolve_bin_paths {
-        true => discover_bin_paths(&mut wad, hashtable, args.full_bin_scan),
-        false => HashMap::new(),
+    let span = tracing::info_span!("extract", total = selected.len());
+    let _entered = span.enter();
+    span.pb_set_style(
+        &ProgressStyle::with_template("{wide_bar:40.cyan/blue} {pos}/{len} \n {spinner} {msg}")
+            .unwrap(),
+    );
+    span.pb_set_length(selected.len() as u64);
+    span.pb_set_message("Extracting chunks");
+
+    let existing = if args.overwrite {
+        ExistingFilePolicy::Overwrite
+    } else {
+        ExistingFilePolicy::Skip
     };
-    let recovered = discovered.len();
+    let mut extractor = WadExtractor::new(hashtable)
+        .with_existing_file_policy(existing)
+        .on_progress(|progress| {
+            span.pb_set_message(&truncate_middle(progress.path(), MAX_LOG_PATH_LEN));
+            span.pb_set_position(progress.done() as u64);
+        });
+    if let Some(pattern) = filter_pattern {
+        extractor = extractor
+            .with_filter(move |path| !should_skip_pattern(path, Some(pattern), filter_invert));
+    }
+    if let Some(kinds) = args.filter_type.as_deref() {
+        // The crate's type filter only keeps, so `-v` hands it the complement.
+        let kept = LeagueFileKind::iter()
+            .filter(|&kind| !should_skip_type(kind, Some(kinds), filter_invert));
+        extractor = extractor.with_type_filter(kept);
+    }
+    if args.resolve_bin_paths {
+        extractor = extractor.with_name_recovery();
+    }
 
-    let mut extractor = Extractor::new(&mut wad, hashtable);
-    extractor.set_discovered(discovered);
+    Ok(extractor.extract_chunks(wad, selected, output_dir)?)
+}
 
-    let filter_pattern = create_filter_pattern(args.pattern)?;
-
-    extractor.set_filter_pattern(filter_pattern);
-    extractor.set_hash_filter(args.hash);
-    extractor.set_filter_invert(args.filter_invert);
-    let output_dir: Utf8PathBuf = match &args.output {
-        Some(path) => Utf8PathBuf::from(path.as_str()),
+/// The output directory, or a sibling directory named after the input file
+/// without its extension.
+fn resolve_output_dir(input: &str, output: Option<&str>) -> Utf8PathBuf {
+    match output {
+        Some(path) => Utf8PathBuf::from(path),
         None => {
-            // Construct sibling dir named after input file (without extension)
-            let input_path = Utf8Path::new(&args.input);
+            let input_path = Utf8Path::new(input);
             let parent = input_path.parent().unwrap_or(Utf8Path::new("."));
             let stem = input_path.file_stem().unwrap_or("extracted");
             parent.join(stem)
         }
-    };
-    let stats =
-        extractor.extract_chunks(&output_dir, args.filter_type.as_deref(), args.overwrite)?;
+    }
+}
 
-    if args.show_stats {
+fn print_stats(input: &str, report: &ExtractReport) {
+    println!();
+    println!("{}: {}", "WAD".bright_cyan().bold(), input.bright_white());
+    println!(
+        "{}: {} chunks ({})",
+        "Extracted".bright_cyan().bold(),
+        report.extracted.to_string().bright_green(),
+        format_size(report.bytes_written).bright_white()
+    );
+    println!(
+        "{}: {} existing",
+        "Skipped".bright_cyan().bold(),
+        report.skipped_existing.to_string().bright_yellow()
+    );
+    if !report.recovered.is_empty() {
+        println!(
+            "{}: {} names from bins",
+            "Recovered".bright_cyan().bold(),
+            report.recovered.len().to_string().bright_green()
+        );
+    }
+    if !report.by_kind.is_empty() {
         println!();
-        println!(
-            "{}: {}",
-            "WAD".bright_cyan().bold(),
-            args.input.bright_white()
-        );
-        println!(
-            "{}: {} chunks ({})",
-            "Extracted".bright_cyan().bold(),
-            stats.extracted_count.to_string().bright_green(),
-            format_size(stats.bytes_written).bright_white()
-        );
-        println!(
-            "{}: {} existing",
-            "Skipped".bright_cyan().bold(),
-            stats.skipped_existing.to_string().bright_yellow()
-        );
-        if recovered > 0 {
+        println!("{}:", "By type".bright_cyan().bold());
+        let mut type_entries: Vec<_> = report.by_kind.iter().collect();
+        type_entries.sort_by(|a, b| b.1.cmp(a.1));
+        for (kind, count) in type_entries {
+            let name = format!("{:?}", kind).to_case(Case::Snake);
             println!(
-                "{}: {} names from bins",
-                "Recovered".bright_cyan().bold(),
-                recovered.to_string().bright_green()
+                "  {:24} {}",
+                name.bright_magenta(),
+                count.to_string().bright_white()
             );
-        }
-        if !stats.by_type.is_empty() {
-            println!();
-            println!("{}:", "By type".bright_cyan().bold());
-            let mut type_entries: Vec<_> = stats.by_type.iter().collect();
-            type_entries.sort_by(|a, b| b.1.cmp(a.1));
-            for (kind, count) in type_entries {
-                let name = format!("{:?}", kind).to_case(Case::Snake);
-                println!(
-                    "  {:24} {}",
-                    name.bright_magenta(),
-                    count.to_string().bright_white()
-                );
-            }
-        }
-    } else {
-        if stats.skipped_existing > 0 {
-            tracing::info!(
-                "extracted {} chunks, skipped {} existing :)",
-                stats.extracted_count,
-                stats.skipped_existing
-            );
-        } else {
-            tracing::info!("extracted {} chunks :)", stats.extracted_count);
         }
     }
-
-    Ok(())
 }
 
 pub fn print_supported_filters() {
