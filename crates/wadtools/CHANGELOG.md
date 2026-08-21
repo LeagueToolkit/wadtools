@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Extraction and bin-name recovery run through `ltk_wad`'s `WadExtractor` and `NameRecovery`,
+  which took over wadtools' own pipeline. The naming rules, the skip-or-overwrite policy, the
+  stats and the parallel reader and writer pipeline are the same, now shared with LTK Manager.
+- The bin scan tells a bin by its magic from the first compressed block alone and reads its
+  strings with no parse of the property tree, so it recovers the names the old `--full-bin-scan`
+  found in a fraction of the time.
+
+### Removed
+
+- `--full-bin-scan` on `extract` and `paths`. The scan reads every bin of the archive now, so the
+  flag had nothing left to switch on.
+
 ## [0.5.7](https://github.com/LeagueToolkit/wadtools/compare/v0.5.6...v0.5.7) - 2026-07-13
 
 ### Added

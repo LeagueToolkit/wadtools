@@ -305,8 +305,8 @@ hashtable format (a `<hex-hash> <path>` text file, as in CommunityDragon's `hash
 [Mimir](https://github.com/LeagueToolkit/Mimir) `.lhdb` hash table. Alias: `rip`.
 
 "Resolvable" means every chunk whose hash we can attribute to a real path: names already known
-to the shared [Mimir](https://github.com/LeagueToolkit/Mimir) cache **plus** names recovered by scanning the WAD's `.bin` files (dependency
-links and string properties, the same recovery used during extraction). Chunks that would only
+to the shared [Mimir](https://github.com/LeagueToolkit/Mimir) cache **plus** names recovered by scanning the WAD's `.bin` files (every
+path string a bin holds, the same recovery used during extraction). Chunks that would only
 render as their 16-character hex fallback are skipped, so the output is a clean, meaningful list.
 
 The `.lhdb` output is written in the Game-table configuration (64-bit XXH64 keys, case-insensitive),
@@ -321,8 +321,7 @@ Common flags:
 - `-H, --hashtable <PATH>` (also `-d`): optional supplemental hashtable file to resolve additional names
 - `-x, --pattern <REGEX>`: only include chunks whose resolved path matches this regex
 - `-v, --filter-invert`: invert the `-x` filter (exclude matching paths instead of including them)
-- `--no-bin-paths`: disable scanning `.bin` files to recover names (enabled by default)
-- `--full-bin-scan`: scan every chunk (not just known `.bin` files), recovering the most names at the cost of a full decompression pass
+- `--no-bin-paths`: disable scanning `.bin` files to recover names (enabled by default). The scan reads every bin of the archive, named or not
 
 Basic examples:
 
@@ -340,8 +339,8 @@ wadtools paths -i Aatrox.wad.client -F lhdb
 # Combine several WADs into one hashtable
 wadtools paths -i Aatrox.wad.client -i Ahri.wad.client -o champions.txt
 
-# Only rip character asset paths, using the deepest bin scan
-wadtools paths -i Aatrox.wad.client --full-bin-scan -x "^assets/characters/"
+# Only rip character asset paths
+wadtools paths -i Aatrox.wad.client -x "^assets/characters/"
 ```
 
 ### Diff

@@ -2,7 +2,7 @@ use camino::Utf8Path;
 use clap::builder::{styling::AnsiColor, Styles};
 use clap::error::ErrorKind;
 use clap::{Parser, Subcommand, ValueEnum};
-use league_toolkit::file::LeagueFileKind;
+use league_toolkit::{file::LeagueFileKind, wad::WadHash};
 use ltk_mimir_cache::HashStore;
 use serde::de::value::Error;
 use serde::de::IntoDeserializer;
@@ -18,9 +18,8 @@ use tracing_subscriber::{filter, fmt};
 use utils::config::{default_config_path, load_or_create_config, resolve_and_persist_progress};
 use utils::{cleanup_legacy_hashtables, expand_wad_inputs, resolve_inputs, WadHashtable};
 
-mod bin_scan;
 mod commands;
-mod extractor;
+mod filters;
 mod launch;
 mod shell;
 mod utils;
@@ -149,11 +148,6 @@ pub enum Commands {
         /// Disable scanning .bin files to recover chunk names before extracting (enabled by default)
         #[arg(long)]
         no_bin_paths: bool,
-
-        /// Scan every chunk (not just known .bin files) for paths, recovering the most
-        /// names at the cost of an extra full decompression pass. Ignored with --no-bin-paths
-        #[arg(long)]
-        full_bin_scan: bool,
     },
     /// Compare two wad files
     ///
@@ -288,11 +282,6 @@ pub enum Commands {
         #[arg(long)]
         no_bin_paths: bool,
 
-        /// Scan every chunk (not just known .bin files) for paths, recovering the most
-        /// names at the cost of an extra full decompression pass. Ignored with --no-bin-paths
-        #[arg(long)]
-        full_bin_scan: bool,
-
         /// Show summary statistics after ripping: true/false (default: true)
         #[arg(short = 's', long, value_name = "true|false", default_missing_value = "true", num_args = 0..=1, default_value_t = true)]
         stats: bool,
@@ -371,7 +360,6 @@ fn run(args: Args) -> eyre::Result<()> {
             overwrite,
             stats,
             no_bin_paths,
-            full_bin_scan,
         } => {
             if list_filters {
                 print_supported_filters();
@@ -398,7 +386,6 @@ fn run(args: Args) -> eyre::Result<()> {
                         overwrite,
                         show_stats: stats,
                         resolve_bin_paths: !no_bin_paths,
-                        full_bin_scan,
                     },
                     &ht,
                 )?;
@@ -476,7 +463,6 @@ fn run(args: Args) -> eyre::Result<()> {
             pattern,
             filter_invert,
             no_bin_paths,
-            full_bin_scan,
             stats,
         } => {
             let resolved = expand_wad_inputs(resolve_inputs(&input));
@@ -493,7 +479,6 @@ fn run(args: Args) -> eyre::Result<()> {
                     pattern,
                     filter_invert,
                     resolve_bin_paths: !no_bin_paths,
-                    full_bin_scan,
                     show_stats: stats,
                 },
                 &ht,
@@ -605,7 +590,7 @@ fn parse_filter_type(s: &str) -> Result<LeagueFileKind, String> {
     }
 }
 
-fn parse_hashes(raw: Option<Vec<String>>) -> eyre::Result<Option<Vec<u64>>> {
+fn parse_hashes(raw: Option<Vec<String>>) -> eyre::Result<Option<Vec<WadHash>>> {
     let Some(strings) = raw else {
         return Ok(None);
     };
@@ -617,7 +602,7 @@ fn parse_hashes(raw: Option<Vec<String>>) -> eyre::Result<Option<Vec<u64>>> {
                 s
             )
         })?;
-        hashes.push(h);
+        hashes.push(WadHash(h));
     }
     Ok(Some(hashes))
 }
